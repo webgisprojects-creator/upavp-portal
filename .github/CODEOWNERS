@@ -1,6 +1,6 @@
-# Who must review changes. Replace with the real GitHub usernames of the team (one line per path is fine).
-# Reviews are only *enforced* if "Require review from Code Owners" is switched on in branch protection.
-*                       @webgisprojects-creator
+# Who must review changes. Reviews are only *enforced* if "Require review from Code Owners" is on in branch protection.
+# Add Shikha (@shikhadata-creater) here once her invitation is accepted - GitHub flags owners who do not have write access.
+*                       @webgisprojects-creator @singhutkarshchauhan123-dotcom
 /infra/                 @webgisprojects-creator
 /.github/               @webgisprojects-creator
 /db/                    @webgisprojects-creator
