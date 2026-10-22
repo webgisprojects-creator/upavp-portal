@@ -35,7 +35,8 @@ permissions:
 jobs:
   deploy:
     name: Deploy to pre-production
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    # Skipped (not red) until the deployment target is configured - see docs/github-setup.md
+    if: ${{ vars.DEPLOY_HOST != '' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
