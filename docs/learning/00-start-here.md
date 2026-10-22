@@ -54,3 +54,4 @@ to work today - but it only helps you if **you can explain every part and defend
 | Databases / PostGIS | `db/setup/001_create_database.sql` |
 | GIS / performance | `docs/architecture.md` section 6, `geoserver/README.md` |
 | Frontend engineering | `apps/dashboard/src/components/MapContainer.jsx`, `lib/cql.js` |
+| Teamwork: access, roles, authorship (UI + CLI) | [07-teammates-and-access.md](07-teammates-and-access.md) |
