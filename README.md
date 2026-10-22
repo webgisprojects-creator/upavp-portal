@@ -88,4 +88,5 @@ python apps/dashboard/scripts/build-map-data.py     # needs ssh access to db-pri
 | [docs/runbook.md](docs/runbook.md) | Day-to-day operations, troubleshooting |
 | [docs/github-setup.md](docs/github-setup.md) | One-time GitHub + server setup for CI/CD |
 | [docs/learning/](docs/learning/00-start-here.md) | Learn the concepts behind this project and prepare for interviews |
+| [AUTHORS.md](AUTHORS.md) | Who builds this, and how credit and git authorship work |
 | [db/README.md](db/README.md), [geoserver/README.md](geoserver/README.md) | Database and GeoServer notes |
