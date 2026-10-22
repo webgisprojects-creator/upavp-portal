@@ -62,7 +62,7 @@ jobs:
 
       - name: Download the artifact built by CI
         if: ${{ inputs.action != 'rollback' }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: portal-site
           path: artifact
