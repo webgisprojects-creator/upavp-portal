@@ -1,0 +1,101 @@
+name: CD
+
+# Continuous Deployment to PRE-PRODUCTION.
+#   * automatic: runs after CI succeeded on main and ships the artifact CI built (nothing is rebuilt)
+#   * manual:    Actions -> CD -> Run workflow  (deploy the latest green main build, or roll back)
+#
+# Required repository settings (see docs/github-setup.md):
+#   secrets   DEPLOY_SSH_KEY        private key of a dedicated deploy user on the server
+#   variables DEPLOY_HOST, DEPLOY_USER, DEPLOY_KNOWN_HOSTS (output of ssh-keyscan), PUBLIC_URL
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "What to do"
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      release:
+        description: "Rollback only: release id to switch to (empty = the previous release)"
+        required: false
+
+# never two deployments at once, and never cancel one that is half-way through
+concurrency:
+  group: deploy-pre-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  deploy:
+    name: Deploy to pre-production
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: pre-production
+      url: ${{ vars.PUBLIC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Find the CI run whose artifact will be deployed
+        id: ci
+        if: ${{ inputs.action != 'rollback' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            id="${{ github.event.workflow_run.id }}"
+          else
+            id="$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          [ -n "$id" ] || { echo "::error::no successful CI run found on main"; exit 1; }
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Download the artifact built by CI
+        if: ${{ inputs.action != 'rollback' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: portal-site
+          path: artifact
+          run-id: ${{ steps.ci.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        if: ${{ inputs.action != 'rollback' }}
+        env:
+          DEPLOY_TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+          BASE_URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          export SSH_OPTS="-i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+          bash infra/deploy/deploy.sh --artifact "$(ls artifact/portal-*.tar.gz)"
+
+      - name: Roll back
+        if: ${{ inputs.action == 'rollback' }}
+        env:
+          DEPLOY_TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+        run: |
+          export SSH_OPTS="-i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts"
+          bash infra/deploy/rollback.sh "${{ inputs.release }}"
+
+      - name: Remove the SSH key from the runner
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

@@ -1,0 +1,50 @@
+.site-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+  padding: 5px 24px;
+  background: linear-gradient(105deg, #0d659f, #1479bd);
+
+  border-bottom: 4px solid rgb(96, 183, 212);
+}
+
+.UP-logo {
+  width: 64px;
+  height: 60px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 50%;;
+}
+.Avas-logo {
+  flex-shrink: 0;
+  object-fit: contain;
+  width: 241px;
+  height: 66px;
+  background: aliceblue;
+  padding: 0;
+  border: 2px solid deepskyblue;
+  border-radius: 8px;
+}
+
+.site-title {
+  flex: 1;
+  margin: 0;
+  text-align: center;
+ color:#e4e9ec;
+  font-size: clamp(38px, 3vw, 30px);
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  .site-header {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .site-logo {
+    width: 45px;
+    height: 45px;
+  }
+}

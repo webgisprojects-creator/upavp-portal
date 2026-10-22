@@ -1,0 +1,7 @@
+# Normalise line endings (the team uses Windows and the servers use Linux)
+* text=auto eol=lf
+*.sh text eol=lf
+*.mp4 binary
+*.png binary
+*.jpg binary
+*.webp binary

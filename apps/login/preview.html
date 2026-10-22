@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UPAVP Login — Standalone Preview</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+  <style>.login-page{min-height:100svh}</style>
+</head>
+<body>
+  <div class="login-page">
+    <video id="bgVideo" class="background-video" autoplay muted playsinline loop preload="metadata" poster="./public/assets/housing-poster.jpg"><source src="./public/assets/housing-aerial-bg.mp4" type="video/mp4" /></video>
+    <div class="video-wash"></div>
+    <div class="page-content">
+      <header class="topbar">
+        <div class="brand-block"><div class="brand-logo-box"><img src="./public/assets/upavp-mark.png" alt="UPAVP official mark" /></div><div class="brand-words"><strong lang="hi">उत्तर प्रदेश आवास एवं विकास परिषद</strong><span>Uttar Pradesh Awas Evam Vikas Parishad</span></div></div>
+        <div class="government-mark" title="Government of Uttar Pradesh"><img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Seal_of_Uttar_Pradesh.svg" alt="Government of Uttar Pradesh emblem" onerror="this.outerHTML='<span class=&quot;seal-fallback&quot;>UP</span>'" /><div><span>Government of</span><strong>Uttar Pradesh</strong></div></div>
+      </header>
+      <main class="main-area">
+        <section class="intro"><span class="eyebrow"><span class="eyebrow-dot"></span> RSAC-UP · GEOSPATIAL INFORMATION SYSTEM</span><h1>Geo-enabled<br/><em>Housing Scheme</em><br/>Dashboard</h1><p>One secure platform to explore approved housing layouts, scheme boundaries, plotted properties and linked allotment information.</p><div class="intro-rule"></div><span class="project-line">Developed by <strong>Remote Sensing Applications Centre – Uttar Pradesh</strong></span></section>
+        <section class="login-card"><div class="card-header"><div class="secure-mark">◈ &nbsp; SECURE ACCESS</div><h2>Welcome back</h2><p>Sign in to access the UPAVP Geo-enabled Dashboard.</p></div>
+          <form id="loginForm" novalidate>
+            <label for="username">User ID</label><div class="field-wrap"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg><input id="username" name="username" type="text" autocomplete="username" placeholder="Enter your user ID" /></div>
+            <div class="form-label-row"><label for="password">Password</label><button class="text-button" type="button" id="forgot">Forgot password?</button></div><div class="field-wrap"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4.5" y="10" width="15" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" /><button class="eye-toggle" type="button" id="togglePass" aria-label="Show password"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.7"/></svg></button></div>
+            <label class="remember-row"><input type="checkbox" id="remember"/><span>Remember my user ID on this device</span></label><div id="notice" class="form-alert" role="alert" style="display:none"></div><button class="submit" type="submit">Sign in to Dashboard &nbsp; →</button>
+          </form>
+          <div class="card-foot">♧ &nbsp; Access is restricted to authorised personnel.</div>
+        </section>
+      </main>
+      <footer class="page-footer"><span>© 2026 UPAVP · Developed by RSAC-UP</span><button type="button" class="video-control" id="videoControl">Ⅱ &nbsp; Pause background</button></footer>
+    </div>
+  </div>
+  <script>
+    const video = document.getElementById('bgVideo');
+    const notice = document.getElementById('notice');
+    const show = msg => { notice.textContent=msg;notice.style.display='flex'; };
+    const remembered = localStorage.getItem('upavp_remembered_id')||'';
+    if(remembered){document.getElementById('username').value=remembered;document.getElementById('remember').checked=true;}
+    document.getElementById('loginForm').addEventListener('submit', e=>{e.preventDefault();const u=document.getElementById('username').value.trim(),p=document.getElementById('password').value;
+      if(!u||!p)return show('Enter your user ID and password.');
+      if(document.getElementById('remember').checked)localStorage.setItem('upavp_remembered_id',u);else localStorage.removeItem('upavp_remembered_id');
+      show('Standalone preview only. Connect the React app to your authentication endpoint.');
+    });
+    document.getElementById('togglePass').addEventListener('click',()=>{const f=document.getElementById('password');f.type=f.type==='password'?'text':'password';});
+    document.getElementById('forgot').addEventListener('click',()=>show('Password recovery requires a configured authentication service.'));
+    document.getElementById('videoControl').addEventListener('click',async()=>{if(video.paused){await video.play();document.getElementById('videoControl').textContent='Ⅱ  Pause background';}else{video.pause();document.getElementById('videoControl').textContent='▶  Play background';}});
+    if(window.matchMedia('(prefers-reduced-motion:reduce)').matches)video.pause();
+  </script>
+</body></html>

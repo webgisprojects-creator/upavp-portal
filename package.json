@@ -1,0 +1,22 @@
+{
+  "name": "upavp-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UPAVP geo-enabled portal: login page + GIS dashboard (Awas Vikas Parishad / UP Housing & Development Board)",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:login": "npm run dev -w @upavp/login",
+    "dev:dashboard": "npm run dev -w @upavp/dashboard",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "test:py": "python -m pytest apps/dashboard/scripts",
+    "site": "bash infra/deploy/build-site.sh",
+    "deploy": "bash infra/deploy/deploy.sh"
+  }
+}
