@@ -1,51 +1,71 @@
-# GitHub and server setup (one time)
+# GitHub and server setup
 
-Do these once, in order. Commands use the GitHub CLI (`gh`); each step can also be done in the web UI.
+This describes what is configured today and how to recreate it (new repository, new server, or after a key rotation).
 
-> **Check your GitHub plan first.** On a free personal account, **branch protection, rulesets and required reviewers for environments only work on
-> public repositories**. For a *private* repository they need GitHub Pro/Team. If you stay on Free + private, the pipeline still works - the "no direct push to `main`,
-> review before merge" rules are then a **team agreement** (see CONTRIBUTING.md) instead of an enforced setting. This project's source should stay **private**.
+> **Plan note.** On a free personal account, **branch protection, rulesets and required reviewers for environments only work on public
+> repositories.** This repository is private on a free plan, so "no direct push to `main`, a teammate reviews every pull request" is a
+> **team agreement** (CONTRIBUTING.md), not an enforced setting. Upgrading to GitHub Pro enforces it (step 5). Keep the source private.
+
+## What is configured now
+
+| Item | Value |
+|---|---|
+| Repository | `webgisprojects-creator/upavp-portal` (private), default branch `main`, squash-merge only, branches deleted after merge |
+| Secrets | `DEPLOY_SSH_KEY` (private key of the deploy user), `VITE_DEMO_USERS` (temporary demo sign-ins, injected at build time) |
+| Variables | `DEPLOY_HOST=27.100.38.131`, `DEPLOY_USER=upavp-deploy`, `PUBLIC_URL=http://27.100.38.131:8070`, `DEPLOY_KNOWN_HOSTS` (the server's RSA host key) |
+| Environment | `pre-production` (created automatically on first use) |
+| Server user | `upavp-deploy` - restricted, see docs/deployment.md section 8 |
 
 ## 1. Create the repository and push
 
-You must be logged in to `gh` as the account that should own the repo (`gh auth status`, `gh auth login`, `gh auth switch`).
+You must be signed in to `gh` as the account that owns the repo (`gh auth status`, `gh auth switch`). Pushing workflow files needs the
+token scope `workflow` (`gh auth refresh -s workflow`). If git picks the wrong saved account, force the right one for this repo:
 
 ```bash
-cd UPAVP-Portal
-git init -b main                                  # (already done if you used the prepared folder)
-git add -A && git status                          # read the list: no .env files, no node_modules, no dist
-git commit -m "chore: initial import of the UPAVP portal (login + dashboard)"
-gh repo create webgisprojects-creator/upavp-portal --private --source . --remote origin --push
+git remote set-url origin https://<OWNER>@github.com/<OWNER>/upavp-portal.git
+git config --local credential.helper ""
+git config --local --add credential.helper "!gh auth git-credential"
+gh repo create <OWNER>/upavp-portal --private --source . --remote origin --push
+gh repo edit <OWNER>/upavp-portal --delete-branch-on-merge --enable-squash-merge --enable-merge-commit=false --enable-rebase-merge=false
 ```
+Device-login codes (`gh auth login --web`) expire after ~15 minutes and must be **approved** (the final "Authorize" button), not just entered.
 
-## 2. Secrets and variables (repository -> Settings -> Secrets and variables -> Actions)
+## 2. Create the restricted deploy user on the server (administrator, once)
 
 ```bash
-OWNER_REPO=webgisprojects-creator/upavp-portal
+ssh-keygen -t ed25519 -N "" -C "github-actions-upavp-deploy" -f ./upavp_deploy_key       # a key used ONLY by the pipeline
+bash infra/server/bootstrap.sh install ./upavp_deploy_key.pub --target pre-prod             # needs ssh as root; idempotent
+```
+`bootstrap.sh` creates `upavp-deploy` (no password, restricted key), hands it ownership of `/var/www/upavp-portal`, installs the root-owned helper
+`/opt/upavp/bin/install-nginx-conf`, writes a **validated** sudoers file (`visudo -cf` before install) and proves that unrestricted sudo is denied.
+It never touches the server's existing `deploy` user. Undo: `bash infra/server/bootstrap.sh remove`.
 
-# a key used ONLY by the pipeline (do not reuse your personal key)
-ssh-keygen -t ed25519 -f ./upavp_deploy_key -N "" -C "github-actions-upavp-deploy"
-ssh-copy-id -i ./upavp_deploy_key.pub root@27.100.38.131           # or append the .pub to the deploy user's authorized_keys
+## 3. Secrets and variables
+
+```bash
+OWNER_REPO=<OWNER>/upavp-portal
 gh secret set DEPLOY_SSH_KEY --repo $OWNER_REPO < ./upavp_deploy_key
-rm ./upavp_deploy_key ./upavp_deploy_key.pub                       # the private key now lives only in GitHub
+rm ./upavp_deploy_key ./upavp_deploy_key.pub               # the private key now lives only in GitHub
 
-gh variable set DEPLOY_HOST        --repo $OWNER_REPO --body "27.100.38.131"
-gh variable set DEPLOY_USER        --repo $OWNER_REPO --body "root"       # replace with a least-privilege user later
-gh variable set PUBLIC_URL         --repo $OWNER_REPO --body "http://27.100.38.131:8070"
-ssh-keyscan -H 27.100.38.131 2>/dev/null | gh variable set DEPLOY_KNOWN_HOSTS --repo $OWNER_REPO
+# the server only has RSA/DSA host keys, so pin the RSA one (read over an authenticated ssh session, not ssh-keyscan)
+ssh pre-prod 'cat /etc/ssh/ssh_host_rsa_key.pub' | awk '{print "27.100.38.131 " $1 " " $2}' | gh variable set DEPLOY_KNOWN_HOSTS --repo $OWNER_REPO
+gh variable set DEPLOY_HOST --repo $OWNER_REPO --body "27.100.38.131"
+gh variable set DEPLOY_USER --repo $OWNER_REPO --body "upavp-deploy"
+gh variable set PUBLIC_URL  --repo $OWNER_REPO --body "http://27.100.38.131:8070"
 
-# temporary demo sign-in list, same JSON as apps/login/.env.example (never commit it)
+# temporary demo sign-in list - the same JSON as apps/login/.env.example (never commit it)
 gh secret set VITE_DEMO_USERS --repo $OWNER_REPO --body '[{"username":"...","password":"..."}]'
 ```
+CI **refuses to build a `main` artifact without `VITE_DEMO_USERS`**: otherwise a login with sign-in silently disabled would be deployed.
 
-## 3. The `pre-production` environment
+## 4. Prove it works
 
-```bash
-gh api -X PUT repos/$OWNER_REPO/environments/pre-production
-```
-Later, create `production` the same way and add **required reviewers** so a person must approve each production deployment.
+1. Actions -> **Deploy readiness check** -> Run workflow. It checks, from a real GitHub runner: port 22 reachable, the deploy key works and the host key matches,
+   the user is not root, unrestricted sudo is denied, the site directory is writable, the helper is installed.
+2. Merge a small pull request. **CI** goes green, then **CD** deploys the CI artifact; `curl http://27.100.38.131:8070/revision.json` shows the new commit.
+3. Actions -> **CD** -> Run workflow -> action `rollback`, then `deploy` again, to prove both manual paths.
 
-## 4. Branch protection for `main` (needs Pro/Team if the repo is private)
+## 5. Branch protection (needs GitHub Pro/Team for a private repo)
 
 ```bash
 gh api -X PUT repos/$OWNER_REPO/branches/main/protection --input - <<'JSON'
@@ -59,25 +79,14 @@ gh api -X PUT repos/$OWNER_REPO/branches/main/protection --input - <<'JSON'
 }
 JSON
 ```
-Also turn on in the repo settings: *Automatically delete head branches*, *Allow squash merging* (disable merge commits), *Dependabot alerts*.
+For production, create a `production` environment with **required reviewers** and reuse the same artifact.
 
-## 5. Server side
+## 6. If GitHub cannot reach the server
 
-* **Reachability:** GitHub-hosted runners connect from the internet, so SSH (port 22) on 27.100.38.131 must be reachable from outside.
-  If it is restricted by IP, either allow GitHub's runner ranges (`curl https://api.github.com/meta` -> `actions`) or install a **self-hosted runner**
-  on a machine inside the network and change `runs-on` in `cd.yml` to `[self-hosted, linux]`.
-* **Key:** the public key from step 2 must be in `~/.ssh/authorized_keys` of `DEPLOY_USER`.
-* **Least privilege (recommended next):** create a `deploy` user instead of using `root`. The deploy scripts need root-level actions
-  (nginx test/reload, writing `/var/www/upavp-portal`, `/etc/nginx`), so install `remote-activate.sh` and the rollback commands as root-owned
-  files under `/opt/upavp/` and grant `deploy` passwordless sudo for exactly those files. Then set `DEPLOY_USER=deploy`.
-* Nothing else needs installing: no Node, no git, no source on the server.
+GitHub-hosted runners connect from the internet. Today port 22 of the server is open to the internet, so this works. If SSH is ever restricted by IP:
+allow GitHub's runner ranges (`curl https://api.github.com/meta`, key `actions`), or install a **self-hosted runner** on a machine inside the network and change
+`runs-on` in `cd.yml` and `deploy-readiness.yml` to `[self-hosted, linux]`. The readiness check tells you immediately which case you are in.
 
-## 6. First run checklist
+## 7. Rotating the deploy key (do this periodically and whenever someone with access leaves)
 
-- [ ] Repository is private; `git log --all` contains no secrets (CI's gitleaks job will also check)
-- [ ] Secrets/variables set; `pre-production` environment exists
-- [ ] Open a test pull request (e.g. a docs typo): **CI** goes green, artifact `portal-site` is attached to the run
-- [ ] Merge it: **CD** deploys; the run summary shows the release; `curl http://27.100.38.131:8070/revision.json` shows the new commit
-- [ ] Trigger **CD -> rollback** once to prove it works, then deploy again
-- [ ] Branch protection (or the team agreement) in place; teammate added as collaborator with *Write* access
-- [ ] `.github/CODEOWNERS` updated with the real usernames
+Generate a new key, run step 2 again with the new `.pub` (it replaces the old one), update the `DEPLOY_SSH_KEY` secret, delete the local files, run the readiness check.

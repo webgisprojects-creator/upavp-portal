@@ -106,7 +106,7 @@ Ordered by importance.
 2. **HTTPS and a hostname**; put the site behind the load balancer with its own server block and cache.
 3. **GeoServer**: read-only DB account (JNDI), fetch size, tile-cache seeding, status-based plot style (green/red); consider a GeoServer near the DB.
 4. **Database hardening**: remove the `0.0.0.0/0` rule in `pg_hba.conf`; scheduled `pg_dump` to a second host with a tested restore; confirm replica state.
-5. **Least-privilege deploy access**: a dedicated `deploy` user with sudo limited to the deploy scripts, instead of `root`.
+5. ~~Least-privilege deploy access~~ **done**: CI/CD uses the restricted `upavp-deploy` user (4 sudo commands, no root) - see docs/deployment.md section 8. Next: rotate the deploy key regularly and restrict SSH by network if GitHub's runner ranges can be allow-listed.
 6. **Disk space** on the pre-prod server (98 % full).
 7. **Third-party tiles** (OpenStreetMap, Esri): confirm licensing for production or use a licensed provider.
 8. **Data quality** (for the GIS team): 85 % of plots have a blank `allotment`; 83 % have no `scheme`; "Viashali" looks like a typo of "Vaishali";

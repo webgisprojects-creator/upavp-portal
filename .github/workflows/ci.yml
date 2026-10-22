@@ -45,8 +45,11 @@ jobs:
         run: |
           if [ -n "$VITE_DEMO_USERS" ]; then
             printf "VITE_DEMO_USERS='%s'\n" "$VITE_DEMO_USERS" > apps/login/.env.production.local
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "::error::VITE_DEMO_USERS secret is not set - refusing to build a main artifact whose login has sign-in disabled"
+            exit 1
           else
-            echo "::warning::VITE_DEMO_USERS secret is not set - the built login page will have sign-in disabled"
+            echo "::warning::VITE_DEMO_USERS secret is not set - this build has sign-in disabled (fine for pull requests)"
           fi
 
       - name: Build the deployable artifact (login + dashboard)

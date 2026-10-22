@@ -5,6 +5,8 @@
 #
 #   no release-id  -> the most recent release that is not the live one
 #   --list         -> show the releases on the server and which one is live
+#
+# Works as the restricted deploy user (it owns /var/www/upavp-portal); no root needed.
 set -euo pipefail
 
 TARGET="${DEPLOY_TARGET:-pre-prod}"
@@ -16,7 +18,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --target) TARGET="$2"; shift 2 ;;
     --list)   LIST=1; shift ;;
-    -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     -*) echo "unknown option: $1" >&2; exit 64 ;;
     *) REL="$1"; shift ;;
   esac
@@ -37,7 +39,7 @@ if [ "$LIST" = 1 ]; then
   exit 0
 fi
 
-exec 9>/var/lock/upavp-deploy.lock
+exec 9>"$BASE/.deploy.lock"
 flock -n 9 || { echo "ERROR: a deployment is running (lock held)"; exit 2; }
 
 if [ -z "$REL" ]; then

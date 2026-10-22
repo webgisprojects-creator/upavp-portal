@@ -27,7 +27,7 @@ ssh pre-prod 'df -h / | tail -1; du -sh /var/cache/nginx/upavp_tiles; systemctl 
 
 1. **Is it really down?** `curl -I http://27.100.38.131:8070/` from two places.
 2. **Was there a deployment just now?** `curl .../revision.json`; check the CD run. If yes -> **roll back first, investigate after.**
-3. **Server side:** `ssh pre-prod 'systemctl status nginx --no-pager | head; nginx -t'`. If `nginx -t` fails, restore the last good config from `/var/backups/upavp/` and `systemctl reload nginx`.
+3. **Server side:** `ssh pre-prod 'systemctl status nginx --no-pager | head; nginx -t'`. If `nginx -t` fails, restore the last good config with `sudo /opt/upavp/bin/install-nginx-conf restore` (backups are in `/var/backups/upavp/`) and `sudo systemctl reload nginx`.
 4. **Only the map is broken?** Probably GeoServer, not the portal (see below). The login and the dashboard shell keep working.
 5. **Write down** what happened, what fixed it, and what would have prevented it.
 
@@ -36,7 +36,7 @@ ssh pre-prod 'df -h / | tail -1; du -sh /var/cache/nginx/upavp_tiles; systemctl 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | CD fails at "Configure SSH" / "Deploy" | missing/expired secret, SSH not reachable from GitHub | check `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`; see github-setup.md section 5 |
-| CD: `another deployment is running (lock held)` | a deploy/rollback is in progress (or died) | wait; if stuck: `ssh pre-prod 'fuser /var/lock/upavp-deploy.lock'` and investigate before removing |
+| CD: `another deployment is running (lock held)` | a deploy/rollback is in progress (or died) | wait; if stuck: `ssh pre-prod 'fuser /var/www/upavp-portal/.deploy.lock'` and investigate before removing |
 | CD: `nginx -t failed - live site NOT changed` | error in `infra/nginx/upavp-portal.conf` | read the nginx lines above it, fix in a PR (CI's nginx check should have caught it) |
 | Smoke test fails -> auto-rollback happened | new release is broken | open the failed run; fix forward in a PR |
 | Map layers blank / red banner "failed to load" | GeoServer slow or down | `curl "http://162.245.218.6:8080/geoserver/AwasVikas/wms?service=WMS&request=GetCapabilities"`; tell the GeoServer owner; tiles already cached still load |

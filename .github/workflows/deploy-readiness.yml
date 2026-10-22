@@ -1,0 +1,61 @@
+name: Deploy readiness check
+
+# Run this by hand (Actions -> Deploy readiness check -> Run workflow) BEFORE relying on CD, and whenever deployment stops working.
+# It proves, from a real GitHub runner, that: the server's SSH port is reachable, the deploy key works and is pinned to the right
+# server, the deploy user is NOT root and has no unrestricted sudo, and the site directory is writable.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Can GitHub deploy to the server?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: pre-production
+    steps:
+      - name: Is the SSH port reachable from GitHub?
+        env:
+          HOST: ${{ vars.DEPLOY_HOST }}
+        run: |
+          if timeout 15 bash -c "</dev/tcp/$HOST/22"; then
+            echo "port 22 of $HOST is reachable from this runner"
+          else
+            echo "::error::port 22 of $HOST is NOT reachable from GitHub runners (firewall / provider ACL). See docs/github-setup.md section 5."
+            exit 1
+          fi
+
+      - name: Is the public site reachable from GitHub? (the post-deploy smoke test runs from here)
+        env:
+          URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          if curl -fsS --max-time 20 -o /dev/null "$URL/"; then
+            echo "$URL is reachable from this runner"
+          else
+            echo "::error::$URL is NOT reachable from GitHub runners - the smoke test would fail and trigger a rollback"
+            exit 1
+          fi
+
+      - name: Log in with the deploy key and check privileges
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+          TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts" "$TARGET" '
+            set -e
+            echo "logged in as: $(id -un) (uid $(id -u))"
+            [ "$(id -u)" != 0 ] || { echo "::error::deploy user is root - use the restricted user"; exit 1; }
+            if sudo -n true 2>/dev/null; then echo "::error::deploy user has UNRESTRICTED sudo"; exit 1; fi
+            echo "unrestricted sudo is denied (good). Allowed:"; sudo -n -l | grep -E "nginx|install-nginx-conf" | sed "s/^ */  /"
+            test -w /var/www/upavp-portal && echo "site directory is writable"
+            test -x /opt/upavp/bin/install-nginx-conf && echo "nginx config helper is installed"
+            echo "live revision: $(curl -fsS --max-time 10 http://127.0.0.1:8070/revision.json)"
+          '
+          rm -f ~/.ssh/deploy_key

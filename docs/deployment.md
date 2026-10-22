@@ -32,7 +32,10 @@ How the portal gets from a pull request to the pre-production server, and how to
 | `/etc/nginx/sites-available/upavp-portal` | Site definition (a copy of `infra/nginx/upavp-portal.conf`), enabled via `sites-enabled` |
 | `/var/cache/nginx/upavp_tiles/` | Edge tile cache (max 300 MB, 2 days) |
 | `/var/backups/upavp/` | Previous nginx site files, kept when the config changes |
-| `/var/lock/upavp-deploy.lock` | Held during a deploy/rollback so two cannot overlap |
+| `/var/www/upavp-portal/.deploy.lock` | Held during a deploy/rollback so two cannot overlap |
+| `/var/www/upavp-portal/incoming/` | Where a deployment uploads the artifact and the nginx site file (emptied after every run) |
+| `/opt/upavp/bin/install-nginx-conf` | **Root-owned helper**: the only way the deploy user can change nginx config (install / restore, tested with `nginx -t`) |
+| `/etc/sudoers.d/upavp-deploy` | The deploy user's entire sudo allowance (see below) |
 
 The server has **no source code, no `node_modules`, no git** for the portal - only built files. Check what is live:
 `curl http://27.100.38.131:8070/revision.json` -> commit, branch, build time, who built it.
@@ -43,7 +46,7 @@ The server has **no source code, no `node_modules`, no git** for the portal - on
 |---|---|---|
 | `build-site.sh` | CI / laptop | Builds both apps, assembles `site/`, writes `revision.json`, packs `dist-site/portal-<commit>.tar.gz` |
 | `deploy.sh` | CI / laptop | Orchestrator: (optional build) -> upload -> `remote-activate.sh` -> public smoke test -> auto-rollback if it fails |
-| `remote-activate.sh` | server (via ssh) | Lock -> unpack -> install nginx config if changed -> **`nginx -t`** -> **atomic switch** (`mv -T`) -> reload -> on-server check -> prune old releases |
+| `remote-activate.sh` | server (via ssh), as `upavp-deploy` | Lock -> unpack -> install nginx config **through the root-owned helper** (backup, `nginx -t`, auto-restore) -> **atomic switch** (`mv -T`) -> reload -> on-server check (auto-rollback of release *and* config) -> remove a failed release -> prune old releases |
 | `smoke-test.sh` | CI / laptop | Pages load, referenced JS/CSS load, revision matches, GeoServer admin/REST blocked (hard); a real tile loads (soft warning) |
 | `rollback.sh` | CI / laptop | Point `current` at an earlier release (default: previous). `--list` shows releases |
 | `warm_cache.py` | laptop | Pre-warm the tile caches before a demo |
@@ -64,7 +67,7 @@ GitHub -> Actions -> **CD** -> *Run workflow* -> action `deploy`.
 npm install
 bash infra/deploy/deploy.sh                    # target alias "pre-prod" from ~/.ssh/config; builds from your working tree
 bash infra/deploy/deploy.sh --force            # allow a dirty tree / non-main branch (test deploys only)
-DEPLOY_TARGET=root@27.100.38.131 bash infra/deploy/deploy.sh
+DEPLOY_TARGET=upavp-deploy@27.100.38.131 SSH_OPTS="-i ~/.ssh/<deploy key>" bash infra/deploy/deploy.sh   # as the restricted user
 ```
 Without a `main`-and-clean tree the script refuses, so a laptop deploy always corresponds to a committed state (use `--force` knowingly).
 The login needs its demo users at build time: put `VITE_DEMO_USERS` in `apps/login/.env.production.local` (git-ignored).
@@ -87,7 +90,7 @@ Set once (see [github-setup.md](github-setup.md)):
 |---|---|---|
 | `DEPLOY_SSH_KEY` | secret | private key allowed to log in to the server |
 | `VITE_DEMO_USERS` | secret | JSON list of temporary demo sign-ins, injected at build time |
-| `DEPLOY_HOST`, `DEPLOY_USER` | variable | e.g. `27.100.38.131`, `root` (to be replaced by a least-privilege user) |
+| `DEPLOY_HOST`, `DEPLOY_USER` | variable | `27.100.38.131`, `upavp-deploy` (restricted user, **not** root) |
 | `DEPLOY_KNOWN_HOSTS` | variable | `ssh-keyscan -H 27.100.38.131` output (pins the server identity) |
 | `PUBLIC_URL` | variable | `http://27.100.38.131:8070` (used by the smoke test and shown on the deployment) |
 
@@ -104,3 +107,21 @@ Set once (see [github-setup.md](github-setup.md)):
 | tile caching | `GetMap` image responses only; `X-Edge-Cache: HIT/MISS/BYPASS` shows the result; errors are never cached |
 
 `proxy_ignore_headers Cache-Control Expires` is deliberate: GeoServer marks tiles it serves from its own cache as `no-cache`, which would prevent nginx from ever caching them.
+
+## 8. The deploy user (least privilege)
+
+The pipeline logs in as **`upavp-deploy`**, a dedicated user created by `infra/server/bootstrap.sh` (an administrator runs it once; see
+[github-setup.md](github-setup.md)). It is deliberately limited:
+
+| | |
+|---|---|
+| Login | key only, no password; the key is `restrict`ed (no port/agent/X11 forwarding, no pty) |
+| Owns | `/var/www/upavp-portal` (releases, incoming) and nothing else |
+| sudo | exactly four commands: `nginx -t`, `systemctl reload nginx`, `/opt/upavp/bin/install-nginx-conf install`, `.../install-nginx-conf restore` - nothing else, **no** unrestricted sudo, not in the `sudo` group |
+| Cannot | read other projects' files, change nginx config except through the helper, install packages, become root |
+
+The helper takes no path arguments (it only reads `incoming/upavp-portal.conf`, refuses symlinks and oversized files, tests the new config
+with `nginx -t` and restores the previous one if it is invalid). The pre-existing `deploy` user on the server is **not** used or modified.
+
+Check it any time: Actions -> **Deploy readiness check** (proves reachability from GitHub, key + pinned host key, non-root, no unrestricted sudo).
+Undo everything: `bash infra/server/bootstrap.sh remove`.

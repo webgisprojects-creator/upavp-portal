@@ -10,7 +10,7 @@
 #
 # env: BASE_URL (public URL used for the smoke test, default http://27.100.38.131:8070), SSH_OPTS
 #
-# Flow: [build] -> upload -> remote-activate (lock, nginx -t, atomic switch, on-server check, auto-rollback)
+# Flow: [build] -> upload -> remote-activate (lock, nginx config test, atomic switch, on-server check, auto-rollback)
 #       -> public smoke test -> automatic rollback if the smoke test fails.
 set -euo pipefail
 
@@ -51,6 +51,8 @@ if [ -z "$ARTIFACT" ]; then
   ARTIFACT="$(cat "$ROOT/dist-site/ARTIFACT_PATH")"
 fi
 [ -f "$ARTIFACT" ] || { echo "artifact not found: $ARTIFACT" >&2; exit 1; }
+# tar and scp read "C:/..." as "host:path" - use an absolute POSIX path (also fixes relative paths)
+ARTIFACT="$(cd "$(dirname "$ARTIFACT")" && pwd)/$(basename "$ARTIFACT")"
 
 REVISION="$(tar -xzOf "$ARTIFACT" site/revision.json)"
 SHORT="$(printf '%s' "$REVISION" | sed -n 's/.*"shortCommit":"\([^"]*\)".*/\1/p')"
@@ -58,8 +60,12 @@ REL="$(date -u +%Y%m%d-%H%M%S)-${SHORT:-nogit}"
 echo "== deploying commit ${SHORT:-unknown} as release $REL to $TARGET"
 
 # ---- 2. upload artifact + nginx config, then activate on the server
-scp_ "$ARTIFACT" "$TARGET:/tmp/upavp-release.tgz"
-scp_ "$ROOT/infra/nginx/upavp-portal.conf" "$TARGET:/tmp/upavp-portal.conf"
+REMOTE_BASE=/var/www/upavp-portal
+INCOMING="$REMOTE_BASE/incoming"
+# clear leftovers first: a file left by another user (e.g. root) could not be overwritten by the deploy user
+ssh_ "$TARGET" "mkdir -p $INCOMING && rm -f $INCOMING/release.tgz $INCOMING/upavp-portal.conf"
+scp_ "$ARTIFACT" "$TARGET:$INCOMING/release.tgz"
+scp_ "$ROOT/infra/nginx/upavp-portal.conf" "$TARGET:$INCOMING/upavp-portal.conf"
 
 OUT="$(mktemp)"; trap 'rm -f "$OUT"' EXIT
 if ! ssh_ "$TARGET" "bash -s -- '$REL' '$KEEP' '${SHORT:-}'" < "$HERE/remote-activate.sh" | tee "$OUT"; then

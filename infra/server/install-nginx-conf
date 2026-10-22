@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# /opt/upavp/bin/install-nginx-conf        (owned by root; installed by infra/server/bootstrap.sh)
+#
+# The ONLY way the CI/CD deploy user may change nginx configuration. It is allowed through sudo and can do exactly two things:
+#   install-nginx-conf install   install /var/www/upavp-portal/incoming/upavp-portal.conf as the portal's nginx site
+#                                (backup first; the new file is tested with nginx -t and rolled back if invalid)
+#   install-nginx-conf restore   put back the most recent backup (used when a deployment is rolled back)
+#
+# Deliberately takes NO path arguments, so it cannot be pointed at other files.
+set -euo pipefail
+
+INCOMING=/var/www/upavp-portal/incoming
+SRC="$INCOMING/upavp-portal.conf"
+DST=/etc/nginx/sites-available/upavp-portal
+ENABLED=/etc/nginx/sites-enabled/upavp-portal
+BACKUPS=/var/backups/upavp
+MAX_BYTES=65536
+
+mkdir -p "$BACKUPS" /var/cache/nginx/upavp_tiles
+chown www-data:www-data /var/cache/nginx/upavp_tiles
+
+latest_backup() { ls -1t "$BACKUPS"/upavp-portal.conf.* 2>/dev/null | head -1; }
+
+activate() {                      # $1 = file to install
+  install -m 644 -o root -g root "$1" "$DST"
+  ln -sfn "$DST" "$ENABLED"
+}
+
+case "${1:-}" in
+  install)
+    # The source lives in a directory the deploy user controls, so it must be a plain file: a symlink
+    # (e.g. to a root-only file) would otherwise be copied into a world-readable location.
+    [ -f "$SRC" ] && [ ! -L "$SRC" ] && [ "$(readlink -f "$SRC")" = "$SRC" ] || { echo "ERROR: $SRC is missing or not a plain file"; exit 1; }
+    [ "$(stat -c %s "$SRC")" -le "$MAX_BYTES" ] || { echo "ERROR: config larger than $MAX_BYTES bytes"; exit 1; }
+
+    if [ -f "$DST" ] && cmp -s "$SRC" "$DST"; then echo "unchanged"; exit 0; fi
+
+    [ -f "$DST" ] && cp -p "$DST" "$BACKUPS/upavp-portal.conf.$(date +%Y%m%d-%H%M%S)"
+    activate "$SRC"
+    if ! nginx -t 2>&1; then
+      echo "ERROR: nginx rejected the new config - restoring the previous one"
+      prev="$(latest_backup)"
+      if [ -n "$prev" ]; then activate "$prev"; fi
+      exit 1
+    fi
+    echo "updated"
+    ;;
+  restore)
+    prev="$(latest_backup)"
+    [ -n "$prev" ] || { echo "ERROR: no backup to restore"; exit 1; }
+    activate "$prev"
+    nginx -t 2>&1
+    echo "restored $(basename "$prev")"
+    ;;
+  *)
+    echo "usage: install-nginx-conf install|restore" >&2
+    exit 64
+    ;;
+esac
