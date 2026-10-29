@@ -7,10 +7,14 @@ const ASSETS = "/assets";
 // Background video: two encodings of the same clip. Both are H.264 with the index at the front of the file ("fast start"),
 // so the browser starts playing after the first packets and keeps streaming the rest (HTTP range requests) - it never has
 // to wait for the whole file.
-//   full  1280x720, ~2 Mbps, 6.8 MB
-//   light  640x360, ~0.45 Mbps, 1.6 MB  - used on slow links / data-saver so it still plays in real time
-const VIDEO_FULL = `${ASSETS}/housing-aerial-bg.mp4`;
-const VIDEO_LIGHT = `${ASSETS}/housing-aerial-bg-low.mp4`;
+//   full  1280x720, ~1.6 Mbps, 7.5 MB
+//   light  640x360, ~0.5 Mbps, 2.3 MB  - used on slow links / data-saver so it still plays in real time
+// SMOOTHNESS: the clip is rendered at 30 fps with the slow motion BAKED IN (motion-interpolated, original speed x0.75), and is played
+// at normal speed. Slowing a 24 fps clip down in the browser (playbackRate 0.75 = 18 fps) does not divide evenly into a 60 Hz screen:
+// frames were shown for 3 or 4 refreshes alternately (measured: 50 ms / 67 ms, 14 % jitter). 30 fps = exactly 2 refreshes at 60 Hz.
+// The file names carry a version because nginx caches /assets/ for a year - change the name whenever the video changes.
+const VIDEO_FULL = `${ASSETS}/housing-aerial-bg-v2.mp4`;
+const VIDEO_LIGHT = `${ASSETS}/housing-aerial-bg-v2-low.mp4`;
 
 function pickVideoSource() {
   const connection = navigator.connection;
@@ -132,7 +136,7 @@ export default function App() {
     if (!el) return undefined;
 
     el.muted = true; // required for autoplay; React only sets the attribute
-    el.playbackRate = 0.75;
+    el.playbackRate = 1; // never change the rate in the browser: it breaks the frame cadence (see VIDEO_FULL)
 
     const start = () => {
       if (userPaused.current) return;
