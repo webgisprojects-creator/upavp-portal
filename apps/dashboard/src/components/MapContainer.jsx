@@ -9,6 +9,7 @@ import VectorSource from 'ol/source/Vector.js'
 import Overlay from 'ol/Overlay.js'
 import { unByKey } from 'ol/Observable.js'
 import { fromLonLat } from 'ol/proj.js'
+import { createEmpty, extend, isEmpty } from 'ol/extent.js'
 import GeoJSON from 'ol/format/GeoJSON.js'
 import VectorLayer from 'ol/layer/Vector.js'
 import Fill from 'ol/style/Fill.js'
@@ -138,6 +139,8 @@ function MapContainer({
   onMapReady,
   onZoomChange,
   onSelectionLoadingChange,
+  layerFilters,
+  focusRequest,
 }) {
   const targetRef = useRef(null)
   const popupRef = useRef(null)
@@ -153,6 +156,7 @@ function MapContainer({
   const [failedLayers, setFailedLayers] = useState({})
   const [selectionError, setSelectionError] = useState('')
   const [selectionLoading, setSelectionLoading] = useState(false)
+  const initialCityRef = useRef(city) // the map opens on the remembered city (no flash of another city after a refresh)
   const highlightCacheRef = useRef(new Map()) // category geometry already downloaded: selecting it again is instant
   const [popup, setPopup] = useState(null)
 
@@ -184,8 +188,8 @@ function MapContainer({
         baseLayers.hybridLabels,
       ],
       view: new View({
-        center: fromLonLat(cityCenters.katra.center),
-        zoom: cityCenters.katra.zoom,
+        center: fromLonLat((cityCenters[initialCityRef.current] ?? cityCenters.katra).center),
+        zoom: (cityCenters[initialCityRef.current] ?? cityCenters.katra).zoom,
       }),
     })
     const highlightSource = new VectorSource()
@@ -396,9 +400,11 @@ function MapContainer({
       // labels whenever the opacity slider moved. updateParams() reloads the image, so only call it for a real change.
       const source = layer.getSource()
       const current = source.getParams()
-      if (current.CQL_FILTER !== undefined || current.SLD_BODY !== undefined) {
+      const wantedFilter = layerFilters?.[item.id] ?? '' // scheme / sector selection (see App.jsx); '' = no filter
+      if ((current.CQL_FILTER ?? '') !== wantedFilter || current.SLD_BODY !== undefined) {
         const params = { ...current }
-        delete params.CQL_FILTER
+        if (wantedFilter) params.CQL_FILTER = wantedFilter
+        else delete params.CQL_FILTER
         delete params.SLD_BODY
         source.updateParams(params)
       }
@@ -406,7 +412,7 @@ function MapContainer({
       const transparency = supportsTransparency ? layerTransparency[item.id] ?? 0 : 0
       layer.setOpacity(1 - transparency / 100)
     })
-  }, [layers, visibleLayers, layerTransparency])
+  }, [layers, visibleLayers, layerTransparency, layerFilters])
 
   useEffect(() => {
     if (!mapInstance) return undefined
@@ -456,6 +462,8 @@ function MapContainer({
           ? `(${categoryProperty} IS NULL OR ${categoryProperty}='' OR ${categoryProperty} NOT IN ('Alloted','Vacant'))`
           : `${categoryProperty}='${selectedLulcCategory.className.replaceAll("'", "''")}'`
     const clauses = [categoryClause]
+    const scopeFilter = layerFilters?.[selectedLayer.id] // the chart only counts the checked schemes / chosen sector
+    if (scopeFilter) clauses.push(`(${scopeFilter})`)
     if (selectedLulcCategory.subClassName && selectedLulcCategory.subClassProperty) {
       const property = selectedLulcCategory.subClassProperty
       if (selectedLulcCategory.subClassName === 'Unspecified') {
@@ -510,7 +518,46 @@ function MapContainer({
       controller.abort()
       source.clear()
     }
-  }, [city, layers, mapInstance, selectedLulcCategory, visibleLayers])
+  }, [city, layers, layerFilters, mapInstance, selectedLulcCategory, visibleLayers])
+
+  // Zoom to a scheme / sector selection: try each target in turn (e.g. the sector boundary, then the plots) until one has a shape.
+  useEffect(() => {
+    if (!mapInstance || !focusRequest) return undefined
+    const controller = new AbortController()
+    async function zoomToSelection() {
+      try {
+        for (const { layer, cql } of focusRequest.targets) {
+          const cacheKey = `${layer}|${cql}`
+          let data = highlightCacheRef.current.get(cacheKey)
+          if (!data) {
+            data = await fetchCategoryGeometry(layer, cql, controller.signal)
+            highlightCacheRef.current.set(cacheKey, data)
+          }
+          const extent = createEmpty()
+          new GeoJSON()
+            .readFeatures(data, { dataProjection: 'EPSG:4326', featureProjection: mapInstance.getView().getProjection() })
+            .forEach((feature) => {
+              const geometry = feature.getGeometry()
+              if (geometry) extend(extent, geometry.getExtent())
+            })
+          if (!isEmpty(extent) && extent.every(Number.isFinite)) {
+            mapInstance.getView().fit(extent, { padding: [60, 60, 60, 60], maxZoom: 17, duration: 600 })
+            return
+          }
+        }
+        if (focusRequest.reset) {
+          const home = cityCenters[city] ?? cityCenters.katra
+          mapInstance.getView().animate({ center: fromLonLat(home.center), zoom: home.zoom, duration: 600 })
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) console.warn('Could not zoom to the selection:', error)
+      }
+    }
+    zoomToSelection()
+    return () => controller.abort()
+    // city is read only when a reset is requested; the request itself is what triggers this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest, mapInstance])
 
   const activeFailedLayers = layers
     .filter(({ id }) => visibleLayers[id] && failedLayers[id])

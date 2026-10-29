@@ -13,6 +13,46 @@ const cities = [
   { id: 'unnao', label: 'Unnao Awas Vikas Scheme-3, Unnao' },
 ]
 
+// Sub-checkboxes of the plot layout: one per scheme (yojana), plus a sector selector. A checked scheme shows its plots AND its boundary
+// on the map; choosing a sector shows that sector's plots and boundary and zooms to it.
+function LayoutScope({ scope }) {
+  const { status, error, catalog, selectedKeys, sector, onToggleScheme, onAllSchemes, onNoSchemes, onSelectSector } = scope
+  if (status === 'loading' || status === 'idle') {
+    return <p className="layer-panel__scope-message">Loading schemes and sectors…</p>
+  }
+  if (status === 'error' || !catalog) {
+    return <p className="layer-panel__scope-message layer-panel__scope-message--error">{error || 'Schemes could not be loaded.'}</p>
+  }
+  const checked = new Set(selectedKeys)
+  return (
+    <div className="layer-panel__scope" role="group" aria-label="Schemes and sectors of the plot layout">
+      <div className="layer-panel__scope-head">
+        <span>Yojana / scheme</span>
+        <span>
+          <button type="button" onClick={onAllSchemes}>All</button>
+          <button type="button" onClick={onNoSchemes}>None</button>
+        </span>
+      </div>
+      {catalog.schemes.map(({ key, label, count, boundary }) => (
+        <label className="layer-panel__scope-row" key={key}>
+          <input type="checkbox" checked={checked.has(key)} onChange={() => onToggleScheme(key)} />
+          <span title={boundary ? `${label} - plots and boundary` : `${label} - plots (no boundary drawn)`}>{label}</span>
+          <small>{count.toLocaleString()}</small>
+        </label>
+      ))}
+      <label className="layer-panel__scope-sector">
+        <span>Sector</span>
+        <select value={sector ?? ''} onChange={(event) => onSelectSector(event.target.value)} aria-label="Zoom to a sector">
+          <option value="">All sectors</option>
+          {catalog.sectors.map(({ number, label, count }) => (
+            <option key={number} value={number}>{`${label} (${count.toLocaleString()} plots)`}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+  )
+}
+
 function CitySelect({ city, onCityChange }) {
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef(null)
@@ -126,6 +166,7 @@ function CityLayerPanel({
   onLayerToggle,
   layerTransparency,
   onLayerTransparencyChange,
+  layoutScope,
 }) {
   return (
     <aside className="layer-panel" aria-label="Map locations and layers">
@@ -217,6 +258,9 @@ function CityLayerPanel({
                   />
                   <span>Property Status</span>
                 </label>
+              )}
+              {item.id === 'vrindavan-layout' && visibleLayers[item.id] && layoutScope && (
+                <LayoutScope scope={layoutScope} />
               )}
             </div>
           )

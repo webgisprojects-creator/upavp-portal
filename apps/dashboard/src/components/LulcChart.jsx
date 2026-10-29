@@ -131,6 +131,7 @@ function LulcChart({
   selectedCategory,
   onCategorySelect,
   highlightLoading = false,
+  cqlFilter = '',
 }) {
   const [hovered, setHovered] = useState(null)
   const dataLabel = categoryProperty === 'class' ? 'LULC' : 'layout'
@@ -141,7 +142,7 @@ function LulcChart({
     subclassProperty: '',
     error: '',
   })
-  const requestKey = `${city}:${layer ?? ''}:${categoryProperty}`
+  const requestKey = `${city}:${layer ?? ''}:${categoryProperty}:${cqlFilter}`
 
   useEffect(() => {
     if (!layer) return undefined
@@ -232,6 +233,7 @@ function LulcChart({
               .join(','),
             srsName: 'EPSG:4326',
             maxFeatures: '100000',
+            ...(cqlFilter ? { CQL_FILTER: cqlFilter } : {}), // only the checked schemes / the chosen sector
           })
           const response = await fetch(`${geoserverWfsUrl}?${params}`, {
             signal: controller.signal,
@@ -339,7 +341,7 @@ function LulcChart({
 
     loadClasses()
     return () => controller.abort()
-  }, [categoryProperty, layer, requestKey])
+  }, [categoryProperty, cqlFilter, layer, requestKey])
 
   const isCurrentData = chartState.key === requestKey
   const classes = isCurrentData ? chartState.classes : []

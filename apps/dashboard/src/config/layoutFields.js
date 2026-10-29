@@ -7,6 +7,14 @@ export const LAYOUT_FIELDS = {
   propertyType: 'property_t', // Residential / Non Residential / Vacant / empty
   propertyStatus: 'status', // Alloted / Vacant / empty
   plotNumber: 'plot_no_',
+  scheme: 'scheme', // yojana name of the plot (messy spellings: see lib/vrindavan.js)
+  sector: 'sector', // "Sector-10" / "Sector 8" ...
+}
+
+// Name fields of the two BOUNDARY layers (other tables than the layout, so they are not in LAYOUT_FIELDS).
+export const BOUNDARY_FIELDS = {
+  scheme: 'yojana_num', // Planning:vrindavan scheme boundary (lucknow."vrindavan scheme boundary")
+  sector: 'sector_no_', // Planning:sector boundary ("Sector 1" ... "Sector 20")
 }
 
 // Scheme and sector columns are looked up in the layer's published schema (DescribeFeatureType) because the
