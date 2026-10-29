@@ -86,6 +86,7 @@ export default function App() {
   const video = useRef(null);
 
   const [paused, setPaused] = useState(false);
+  const [videoSkipped, setVideoSkipped] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const [username, setUsername] = useState(
@@ -102,43 +103,51 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [stateSealFailed, setStateSealFailed] = useState(false);
 
-  // Background video accessibility
-useEffect(() => {
-  if (!video.current) return;
+  // Background video. It is NOT started when the browser asks to save data, the link is slow (mobile hotspot) or the
+  // operating system asks for reduced motion (this includes most remote-desktop sessions, which switch Windows
+  // animations off). The poster image is shown instead and nothing is downloaded - but the visitor can always
+  // press the play button in the footer, which loads the file on demand.
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
 
-  // Background video speed
-  video.current.playbackRate = 0.75;
+    el.playbackRate = 0.75;
 
-  // Skip the 6.8 MB video on data-saver mode, a slow link (mobile hotspot) or reduced motion:
-  // the poster image is shown instead and nothing is downloaded.
-  const connection = navigator.connection;
-  const slowLink =
-    connection &&
-    (connection.saveData ||
-      /(^|-)(2g|3g)$/.test(connection.effectiveType || "") ||
-      (connection.downlink && connection.downlink < 1.5));
-  if (slowLink || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    video.current.pause();
-    video.current.querySelectorAll("source").forEach((source) => source.remove());
-    video.current.load();
-    setPaused(true);
-  }
-}, []);
+    const connection = navigator.connection;
+    const slowLink =
+      connection &&
+      (connection.saveData ||
+        /(^|-)(2g|3g)$/.test(connection.effectiveType || "") ||
+        (connection.downlink && connection.downlink < 1.5));
+    if (slowLink || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      el.pause();
+      el.querySelectorAll("source").forEach((source) => source.remove());
+      el.load();
+      setVideoSkipped(true);
+      setPaused(true);
+      return;
+    }
+    // autoplay can still be refused by the browser: then show the button in its "play" state
+    el.play?.().catch(() => setPaused(true));
+  }, []);
 
-  // Background video play/pause
   async function toggleVideo() {
-    if (!video.current) return;
+    const el = video.current;
+    if (!el) return;
 
-    if (video.current.paused) {
+    if (el.paused) {
       try {
-        await video.current.play();
-        setPaused(false);
+        // (currentSrc is NOT usable here: browsers keep the old value after the <source> was removed)
+        if (!el.getAttribute("src") && !el.querySelector("source")) {
+          el.src = `${ASSETS}/housing-aerial-bg.mp4`; // was skipped on load: fetch it now
+          el.load();
+        }
+        await el.play();
       } catch {
         setPaused(true);
       }
     } else {
-      video.current.pause();
-      setPaused(true);
+      el.pause();
     }
   }
 
@@ -211,6 +220,8 @@ useEffect(() => {
   preload="metadata"
   poster={`${ASSETS}/housing-poster.jpg`}
   aria-hidden="true"
+  onPlay={() => setPaused(false)}
+  onPause={() => setPaused(true)}
 >
   <source
     src={`${ASSETS}/housing-aerial-bg.mp4`}
@@ -466,7 +477,12 @@ useEffect(() => {
             Developed by RSAC-UP
           </span>
 
-         
+          <button className="video-control" type="button" onClick={toggleVideo}>
+            <Icon name={paused ? "play" : "pause"} size={14} />
+            {paused
+              ? videoSkipped ? "Play background video (6.8 MB)" : "Play background video"
+              : "Pause background video"}
+          </button>
 
         </footer>
 
