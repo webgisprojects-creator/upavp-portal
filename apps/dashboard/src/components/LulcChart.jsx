@@ -7,6 +7,10 @@ const geoserverWmsUrl =
   import.meta.env.VITE_GEOSERVER_WMS_URL?.trim() || '/geoserver/wms'
 const geoserverWfsUrl = geoserverWmsUrl.replace(/\/wms(?=\?|$)/i, '/wfs')
 
+// Finished chart data, kept for the session: going back to a city (or re-opening a layer) is instant instead of a new download.
+const CHART_CACHE_TTL_MS = 10 * 60 * 1000
+const chartCache = new Map()
+
 const cityNames = {
   katra: 'Katra, Pratapgarh',
   majhola: 'Majhola, Moradabad',
@@ -144,6 +148,11 @@ function LulcChart({
 
     const controller = new AbortController()
     async function loadClasses() {
+      const cached = chartCache.get(requestKey)
+      if (cached && Date.now() - cached.at < CHART_CACHE_TTL_MS) {
+        setChartState(cached.state)
+        return
+      }
       try {
         const schemaParams = new URLSearchParams({
           service: 'WFS',
@@ -203,35 +212,49 @@ function LulcChart({
               normalizedName.startsWith('subcategory')
             )
           }) ?? ''
-        const params = new URLSearchParams({
-          service: 'WFS',
-          version: '1.1.0',
-          request: 'GetFeature',
-          typeName: layer,
-          outputFormat: 'application/json',
-          propertyName: [
-            resolvedCategoryProperty,
-            areaProperty,
-            subclassProperty,
-            geometryProperty,
-          ]
-            .filter(Boolean)
-            .join(','),
-          srsName: 'EPSG:4326',
-          maxFeatures: '100000',
-        })
-        const response = await fetch(`${geoserverWfsUrl}?${params}`, {
-          signal: controller.signal,
-        })
-        const responseText = await response.text()
-        if (!response.ok) {
-          throw new Error(`GeoServer returned HTTP ${response.status}.`)
+        // Areas come from an attribute column when the layer has one (LULC: area_in_ha) - then the geometry is not downloaded at
+        // all (the Katra chart went from ~110 KB to a few KB). If that column is missing, empty or all zero (the Vrindavan
+        // layout's area_sq_m is 0 for every plot) the geometry is fetched and measured instead.
+        async function fetchChartData(withGeometry) {
+          const params = new URLSearchParams({
+            service: 'WFS',
+            version: '1.1.0',
+            request: 'GetFeature',
+            typeName: layer,
+            outputFormat: 'application/json',
+            propertyName: [
+              resolvedCategoryProperty,
+              areaProperty,
+              subclassProperty,
+              withGeometry ? geometryProperty : '',
+            ]
+              .filter(Boolean)
+              .join(','),
+            srsName: 'EPSG:4326',
+            maxFeatures: '100000',
+          })
+          const response = await fetch(`${geoserverWfsUrl}?${params}`, {
+            signal: controller.signal,
+          })
+          const responseText = await response.text()
+          if (!response.ok) {
+            throw new Error(`GeoServer returned HTTP ${response.status}.`)
+          }
+          const parsed = JSON.parse(responseText)
+          if (!Array.isArray(parsed.features)) {
+            throw new Error('GeoServer did not return LULC features.')
+          }
+          return parsed
         }
-
-        const data = JSON.parse(responseText)
-        if (!Array.isArray(data.features)) {
-          throw new Error('GeoServer did not return LULC features.')
-        }
+        const areasUsable = (collection) =>
+          collection.features.length > 0 &&
+          collection.features.every(({ properties }) => {
+            const value = properties?.[areaProperty]
+            return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+          }) &&
+          collection.features.some(({ properties }) => Number(properties[areaProperty]) > 0)
+        let data = await fetchChartData(!areaProperty)
+        if (areaProperty && !areasUsable(data)) data = await fetchChartData(true)
 
         const features = new GeoJSON().readFeatures(data, {
           dataProjection: 'EPSG:4326',
@@ -293,13 +316,15 @@ function LulcChart({
           }))
           .sort((a, b) => b.area - a.area)
 
-        setChartState({
+        const nextState = {
           key: requestKey,
           classes: chartData,
           categoryProperty: resolvedCategoryProperty,
           subclassProperty,
           error: '',
-        })
+        }
+        chartCache.set(requestKey, { at: Date.now(), state: nextState })
+        setChartState(nextState)
       } catch (error) {
         if (controller.signal.aborted) return
         setChartState({

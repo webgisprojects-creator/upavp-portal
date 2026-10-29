@@ -15,7 +15,7 @@ import Fill from 'ol/style/Fill.js'
 import Stroke from 'ol/style/Stroke.js'
 import Style from 'ol/style/Style.js'
 import { LAYOUT_FIELDS } from '../config/layoutFields.js'
-import { BASEMAP_Z_INDEX, drawOrder, topFirst } from '../config/layerOrder.js'
+import { BASEMAP_Z_INDEX, drawOrder, hasOpacitySlider, topFirst } from '../config/layerOrder.js'
 import MapInfoControl from './MapInfoControl.jsx'
 import 'ol/ol.css'
 
@@ -402,8 +402,7 @@ function MapContainer({
         delete params.SLD_BODY
         source.updateParams(params)
       }
-      const supportsTransparency =
-        item.id.includes('lulc') || item.id === 'vrindavan-layout'
+      const supportsTransparency = hasOpacitySlider(item.id)
       const transparency = supportsTransparency ? layerTransparency[item.id] ?? 0 : 0
       layer.setOpacity(1 - transparency / 100)
     })
@@ -530,13 +529,6 @@ function MapContainer({
       }
       return []
     })
-  if (city === 'lucknow' && visibleLayers['vrindavan-scheme-boundary']) {
-    mapLegendItems.push({
-      id: 'vrindavan-village-boundary-legend',
-      name: 'Village Boundary',
-      symbol: 'village',
-    })
-  }
   const statusMessage = !geoserverUrl
     ? 'GeoServer is not configured. Add VITE_GEOSERVER_WMS_URL to .env.local, then restart Vite.'
     : activeFailedLayers.length

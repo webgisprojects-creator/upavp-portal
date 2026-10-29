@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { BASEMAP_Z_INDEX, drawOrder, layerRole, topFirst } from './layerOrder.js'
+import { BASEMAP_Z_INDEX, drawOrder, hasOpacitySlider, layerRole, topFirst } from './layerOrder.js'
 
 // ids exactly as App.jsx defines them
 const katra = ['katra-lulc', 'katra-cadastral', 'katra-scheme', 'katra-village']
 const sikandra = ['sikandra-lulc', 'sikandra-cadastral', 'sikandra-railway', 'sikandra-scheme', 'sikandra-village']
-const lucknow = ['vrindavan-layout', 'vrindavan-scheme-boundary']
+const lucknow = [
+  'vrindavan-layout',
+  'vrindavan-sector6-landuse',
+  'vrindavan-cadastral',
+  'vrindavan-village-boundary',
+  'vrindavan-scheme-boundary',
+]
 
 describe('layer drawing order', () => {
   it('maps every id used by the dashboard to a role', () => {
@@ -24,6 +30,16 @@ describe('layer drawing order', () => {
 
   it('puts the Vrindavan scheme outline above the Vrindavan layout', () => {
     expect(drawOrder('vrindavan-scheme-boundary')).toBeGreaterThan(drawOrder('vrindavan-layout'))
+  })
+
+  it('orders the whole Vrindavan stack: layout < sector 6 land use < cadastral < village < scheme', () => {
+    const order = ['vrindavan-layout', 'vrindavan-sector6-landuse', 'vrindavan-cadastral', 'vrindavan-village-boundary', 'vrindavan-scheme-boundary']
+    expect(topFirst(order.map((id) => ({ id }))).map(({ id }) => id)).toEqual([...order].reverse())
+  })
+
+  it('offers a transparency slider only for the opaque filled layers', () => {
+    expect(['katra-lulc', 'vrindavan-layout', 'vrindavan-sector6-landuse'].every(hasOpacitySlider)).toBe(true)
+    expect(['katra-cadastral', 'katra-village', 'katra-scheme', 'vrindavan-cadastral'].some(hasOpacitySlider)).toBe(false)
   })
 
   it('keeps all data above the basemap imagery but below the hybrid labels and the highlights', () => {

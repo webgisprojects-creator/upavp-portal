@@ -3,6 +3,7 @@
 //
 // Reasoning (what each SLD actually draws):
 //   lulc / layout   opaque FILLED polygons          -> the thematic base, everything else must sit above them
+//   landuse         filled plot land use (Vrindavan sector 6) -> just above the layout it refines
 //   railway         a line                           -> infrastructure over the areas
 //   cadastral       1 px parcel lines + gata numbers -> fine detail over the areas
 //   village         3 px black line + village names  -> administrative boundary
@@ -13,12 +14,13 @@
 
 export const BASEMAP_Z_INDEX = { imagery: 0, labels: 100 }
 
-const DATA_Z_INDEX = { lulc: 10, layout: 10, railway: 20, cadastral: 30, village: 40, scheme: 50 }
+const DATA_Z_INDEX = { lulc: 10, layout: 10, landuse: 15, railway: 20, cadastral: 30, village: 40, scheme: 50 }
 const DEFAULT_Z_INDEX = 15
 
 export function layerRole(id) {
   if (id.includes('lulc')) return 'lulc'
   if (id.includes('layout')) return 'layout'
+  if (id.includes('landuse')) return 'landuse'
   if (id.includes('railway')) return 'railway'
   if (id.includes('cadastral')) return 'cadastral'
   if (id.includes('village')) return 'village'
@@ -28,6 +30,11 @@ export function layerRole(id) {
 
 export function drawOrder(id) {
   return DATA_Z_INDEX[layerRole(id)] ?? DEFAULT_Z_INDEX
+}
+
+// Opaque filled layers get a transparency slider in the panel (so the basemap can be seen through them).
+export function hasOpacitySlider(id) {
+  return ['lulc', 'layout', 'landuse'].includes(layerRole(id))
 }
 
 // Same order as the map, topmost first - used for the layer panel, the legend and the click-to-identify popup.

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { hasOpacitySlider } from '../config/layerOrder.js'
 
 const cities = [
   { id: 'ayodhya', label: 'Bazar Purak Scheme-1, Ayodhya' },
@@ -139,7 +140,7 @@ function CityLayerPanel({
       </div>
       <div className="layer-panel__layer-list">
         {layers.map((item) => {
-          const supportsTransparency = item.id.includes('lulc')
+          const supportsTransparency = hasOpacitySlider(item.id)
           const transparency = layerTransparency[item.id] ?? 0
 
           return (
@@ -178,7 +179,7 @@ function CityLayerPanel({
       </div>
       <div className="layer-panel__layer-list">
         {planningLayers.map((item) => {
-          const supportsTransparency = item.id === 'vrindavan-layout'
+          const supportsTransparency = hasOpacitySlider(item.id)
           const transparency = layerTransparency[item.id] ?? 0
 
           return (
@@ -207,7 +208,7 @@ function CityLayerPanel({
                   <output>{transparency}%</output>
                 </label>
               )}
-              {supportsTransparency && visibleLayers[item.id] && (
+              {item.id === 'vrindavan-layout' && visibleLayers[item.id] && (
                 <label className="layer-panel__layer">
                   <input
                     type="checkbox"

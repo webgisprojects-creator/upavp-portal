@@ -58,10 +58,13 @@ const cityLayers = {
   lucknow: [],
 }
 
+// Lucknow / Vrindavan layers (workspace Planning). `defaultVisible: false` = listed in the panel but switched on by the user
+// (the heavy or overlapping ones). The names are what the panel, legend and info popup show; GeoServer's own titles are just the
+// table names ("vrindavan merge layer").
 const planningLayers = [
   {
     id: 'vrindavan-layout',
-    name: 'Vrindavan Layout',
+    name: 'Vrindavan Plot Layout',
     layer: 'Planning:vrindavan_layout',
     zoomStyle: {
       threshold: 16,
@@ -69,8 +72,24 @@ const planningLayers = [
       statusStyle: 'vrindavan_Alloted_label_plot_cat',
     },
   },
-   { id: 'vrindavan-scheme-boundary', name: 'Vrindavan Scheme Boundary', layer: 'Planning:vrindavan scheme boundary' },
+  {
+    id: 'vrindavan-sector6-landuse',
+    name: 'Vrindavan Sector 6 Land Use',
+    layer: 'Planning:vrindavan sector 6 landuse',
+    defaultVisible: false,
+  },
+  {
+    id: 'vrindavan-cadastral',
+    name: 'Vrindavan Cadastral (Gata / Khasra)',
+    layer: 'Planning:vrindavan merge layer',
+    defaultVisible: false,
+  },
+  { id: 'vrindavan-village-boundary', name: 'Vrindavan Village Boundary', layer: 'Planning:vrindavan village boundary' },
+  { id: 'vrindavan-scheme-boundary', name: 'Vrindavan Scheme Boundary', layer: 'Planning:vrindavan scheme boundary' },
 ]
+
+const planningDefaults = () =>
+  planningLayers.map(({ id, defaultVisible }) => [id, defaultVisible !== false])
 
 function App() {
   const [basemap, setBasemap] = useState('hybrid')
@@ -85,7 +104,7 @@ function App() {
   const [visibleLayers, setVisibleLayers] = useState(() =>
     Object.fromEntries([
       ...cityLayers.katra.map(({ id }) => [id, true]),
-      ...planningLayers.map(({ id }) => [id, true]),
+      ...planningDefaults(),
     ]),
   )
   const [layerTransparency, setLayerTransparency] = useState({})
@@ -134,7 +153,7 @@ function App() {
     setVisibleLayers(
       Object.fromEntries([
         ...cityLayers[nextCity].map(({ id }) => [id, true]),
-        ...planningLayers.map(({ id }) => [id, true]),
+        ...planningDefaults(),
       ]),
     )
   }
