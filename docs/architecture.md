@@ -13,7 +13,7 @@ railway and water bodies on a map, with a summary chart, a landuse filter and ba
 | Map server | GeoServer 2.27 (Tomcat 9) | 162.245.218.6 :8080 | Workspaces `Landuse_LULC` and `Planning` (the dashboard), `AwasVikas` (kept, no longer used by the dashboard). **Shared with another portal**; reached only via the portal's `/geoserver/` proxy |
 | Database | `db-primary` (PostgreSQL 17 + PostGIS 3.6) | 27.100.38.132 :5432 / PgBouncer :6432 | Database `upavp_geo` |
 | Load balancer | `load-balancer-2` (nginx) | 27.100.38.133 | **Not used by this project yet** (it fronts the older app on :8060) |
-| Old dashboard | IIS (Windows) | 103.15.81.74 `/AwasVikas/` | Reference only; replaced by the Land Use Acquisition dashboard below |
+| Old dashboard | IIS (Windows) | 103.15.81.74 `/AwasVikas/` | Reference only; replaced by the UPAVP Geo Dashboard below |
 
 Also on the pre-prod server and **not to be disturbed**: a PM2 app on :8060 and the `wipzo.in` site on 80/443.
 
@@ -31,13 +31,17 @@ React 19 + Vite 7. A full-screen video background (skipped on slow links / data-
 **Authentication is temporary**: a build-time list of demo users (`VITE_DEMO_USERS`) is checked in the browser. This is *not* security.
 
 ### Dashboard (`apps/dashboard`)
-"Land Use Acquisition" dashboard: React 19 + OpenLayers 10 + Vite 8, served at `/AwasVikas/` (the login page redirects there).
+The **UPAVP Geo Dashboard**: React 19 + OpenLayers 10 + Vite 8, served at `/AwasVikas/` (the login page redirects there).
 Per city (Katra, Majhola, Hardoi, Ayodhya, Barabanki, Sikandra, Unnao) it shows land use / land cover, cadastral, scheme and village
 boundaries from workspace `Landuse_LULC`; for Lucknow it shows the Vrindavan layout and scheme boundary from workspace `Planning`.
 Layers are single-image WMS requests (`ImageWMS`) through the same-origin `/geoserver/wms` proxy; charts, search boxes and the
 feature-info popup read the same layers through WFS. Basemaps: OSM, Esri satellite, Esri hybrid.
 * `src/config/layoutFields.js` - **the database column names the Vrindavan layout code depends on** (unit-tested). The SLD styles in
   GeoServer name the same columns, so a renamed column must be changed in both places (see runbook).
+* `src/config/layerOrder.js` - **the drawing order of the map layers**, bottom to top: basemap imagery, LULC / Vrindavan layout (opaque filled
+  areas), railway, cadastral (thin parcel lines), village boundary (thick black line + names), **scheme boundary (red dashed, always on top)**,
+  then the Esri place-name labels of the Hybrid basemap, then highlights / search overlays (z-index 900+). The layer panel, the legend and the
+  click-to-identify popup list layers in the same order, topmost first. A new layer type must be given a place in that file (a test checks it).
 * There is no generated data any more: everything is read live from GeoServer.
 
 ### nginx site (`infra/nginx/upavp-portal.conf`)
