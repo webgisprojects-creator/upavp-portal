@@ -4,6 +4,24 @@ import { checkDemoLogin, loadDemoUsers } from "./auth/demoAuth";
 
 const ASSETS = "/assets";
 
+// Background video: two encodings of the same clip. Both are H.264 with the index at the front of the file ("fast start"),
+// so the browser starts playing after the first packets and keeps streaming the rest (HTTP range requests) - it never has
+// to wait for the whole file.
+//   full  1280x720, ~2 Mbps, 6.8 MB
+//   light  640x360, ~0.45 Mbps, 1.6 MB  - used on slow links / data-saver so it still plays in real time
+const VIDEO_FULL = `${ASSETS}/housing-aerial-bg.mp4`;
+const VIDEO_LIGHT = `${ASSETS}/housing-aerial-bg-low.mp4`;
+
+function pickVideoSource() {
+  const connection = navigator.connection;
+  const slow =
+    connection &&
+    (connection.saveData ||
+      /(^|-)(2g|3g)$/.test(connection.effectiveType || "") ||
+      (connection.downlink && connection.downlink < 2.5));
+  return slow ? VIDEO_LIGHT : VIDEO_FULL;
+}
+
 const UP_SEAL_URL =
   "https://upload.wikimedia.org/wikipedia/commons/f/fa/Seal_of_Uttar_Pradesh.svg";
 
@@ -86,7 +104,8 @@ export default function App() {
   const video = useRef(null);
 
   const [paused, setPaused] = useState(false);
-  const [videoSkipped, setVideoSkipped] = useState(false);
+  const [videoSrc] = useState(pickVideoSource);
+  const userPaused = useRef(false); // true only when the visitor pressed pause
   const [showPassword, setShowPassword] = useState(false);
 
   const [username, setUsername] = useState(
@@ -103,50 +122,70 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [stateSealFailed, setStateSealFailed] = useState(false);
 
-  // Background video. It is NOT started when the browser asks to save data, the link is slow (mobile hotspot) or the
-  // operating system asks for reduced motion (this includes most remote-desktop sessions, which switch Windows
-  // animations off). The poster image is shown instead and nothing is downloaded - but the visitor can always
-  // press the play button in the footer, which loads the file on demand.
+  // Background video: it is ALWAYS played (no "slow link / reduced motion" opt-outs), whatever machine it is opened on.
+  // Safety nets, because browsers and remote-desktop sessions interfere in different ways:
+  //  * autoplay refused  -> retry on the visitor's first click / key / touch / scroll
+  //  * paused by the browser (power saving, tab switch) -> resume, unless the visitor pressed pause
+  //  * the chosen file fails to load -> fall back to the other encoding
   useEffect(() => {
     const el = video.current;
-    if (!el) return;
+    if (!el) return undefined;
 
+    el.muted = true; // required for autoplay; React only sets the attribute
     el.playbackRate = 0.75;
 
-    const connection = navigator.connection;
-    const slowLink =
-      connection &&
-      (connection.saveData ||
-        /(^|-)(2g|3g)$/.test(connection.effectiveType || "") ||
-        (connection.downlink && connection.downlink < 1.5));
-    if (slowLink || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      el.pause();
-      el.querySelectorAll("source").forEach((source) => source.remove());
+    const start = () => {
+      if (userPaused.current) return;
+      el.play?.().catch(() => {});
+    };
+
+    const retryEvents = ["pointerdown", "keydown", "touchstart", "scroll"];
+    const retryOnGesture = () => {
+      start();
+      if (!el.paused) retryEvents.forEach((name) => window.removeEventListener(name, retryOnGesture));
+    };
+    retryEvents.forEach((name) => window.addEventListener(name, retryOnGesture, { passive: true }));
+
+    const onPause = () => {
+      if (!userPaused.current && !document.hidden) setTimeout(start, 250);
+    };
+    const onVisible = () => {
+      if (!document.hidden) start();
+    };
+    const onError = () => {
+      const other = el.getAttribute("src") === VIDEO_FULL ? VIDEO_LIGHT : VIDEO_FULL;
+      if (el.dataset.triedFallback) return; // both encodings failed: the poster image stays
+      el.dataset.triedFallback = "1";
+      el.src = other;
       el.load();
-      setVideoSkipped(true);
-      setPaused(true);
-      return;
-    }
-    // autoplay can still be refused by the browser: then show the button in its "play" state
-    el.play?.().catch(() => setPaused(true));
+      start();
+    };
+    el.addEventListener("pause", onPause);
+    el.addEventListener("error", onError);
+    document.addEventListener("visibilitychange", onVisible);
+
+    start();
+    return () => {
+      retryEvents.forEach((name) => window.removeEventListener(name, retryOnGesture));
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("error", onError);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, []);
 
+  // Pause / play button (visitors must be able to stop moving content)
   async function toggleVideo() {
     const el = video.current;
     if (!el) return;
-
     if (el.paused) {
+      userPaused.current = false;
       try {
-        // (currentSrc is NOT usable here: browsers keep the old value after the <source> was removed)
-        if (!el.getAttribute("src") && !el.querySelector("source")) {
-          el.src = `${ASSETS}/housing-aerial-bg.mp4`; // was skipped on load: fetch it now
-          el.load();
-        }
         await el.play();
       } catch {
         setPaused(true);
       }
     } else {
+      userPaused.current = true;
       el.pause();
     }
   }
@@ -217,17 +256,13 @@ export default function App() {
   muted
   playsInline
   loop
-  preload="metadata"
+  preload="auto"
+  src={videoSrc}
   poster={`${ASSETS}/housing-poster.jpg`}
   aria-hidden="true"
   onPlay={() => setPaused(false)}
   onPause={() => setPaused(true)}
->
-  <source
-    src={`${ASSETS}/housing-aerial-bg.mp4`}
-    type="video/mp4"
-  />
-</video>
+/>
 
       <div className="video-wash" aria-hidden="true" />
 
@@ -479,9 +514,7 @@ export default function App() {
 
           <button className="video-control" type="button" onClick={toggleVideo}>
             <Icon name={paused ? "play" : "pause"} size={14} />
-            {paused
-              ? videoSkipped ? "Play background video (6.8 MB)" : "Play background video"
-              : "Pause background video"}
+            {paused ? "Play background video" : "Pause background video"}
           </button>
 
         </footer>
