@@ -17,9 +17,8 @@ ssh pre-prod 'df -h / | tail -1; du -sh /var/cache/nginx/upavp_tiles; systemctl 
 |---|---|
 | Deploy | Merge to `main` (automatic) or Actions -> CD -> Run workflow -> `deploy` |
 | Roll back | Actions -> CD -> Run workflow -> `rollback`, or `bash infra/deploy/rollback.sh [release]` |
-| Warm map tiles before a demo | `python infra/deploy/warm_cache.py` (~13 min, ~5,000 tiles around Ghaziabad) |
+| Warm map tiles | `infra/deploy/warm_cache.py` only knows the retired `AwasVikas` layers; the new dashboard requests free-form images, which are not tile-cached |
 | Clear the server tile cache | `ssh pre-prod 'rm -rf /var/cache/nginx/upavp_tiles/* && systemctl reload nginx'` (and truncate the layer in GeoServer's GWC; browsers keep tiles 1 day) |
-| Refresh dashboard data snapshots | `python apps/dashboard/scripts/build-map-data.py`, review the diff, PR, merge |
 | See nginx errors | `ssh pre-prod 'tail -50 /var/log/nginx/error.log'` |
 | Disk space | `ssh pre-prod 'df -h /'`; releases are auto-pruned to 5; look at other large data on the server |
 
@@ -39,10 +38,12 @@ ssh pre-prod 'df -h / | tail -1; du -sh /var/cache/nginx/upavp_tiles; systemctl 
 | CD: `another deployment is running (lock held)` | a deploy/rollback is in progress (or died) | wait; if stuck: `ssh pre-prod 'fuser /var/www/upavp-portal/.deploy.lock'` and investigate before removing |
 | CD: `nginx -t failed - live site NOT changed` | error in `infra/nginx/upavp-portal.conf` | read the nginx lines above it, fix in a PR (CI's nginx check should have caught it) |
 | Smoke test fails -> auto-rollback happened | new release is broken | open the failed run; fix forward in a PR |
-| Map layers blank / red banner "failed to load" | GeoServer slow or down | `curl "http://162.245.218.6:8080/geoserver/AwasVikas/wms?service=WMS&request=GetCapabilities"`; tell the GeoServer owner; tiles already cached still load |
-| A layer is very slow the first time | tiles not cached (GeoServer is 244 ms away) | `warm_cache.py` for the area; longer term see architecture section 6 |
+| Map layers blank / red banner "failed to load" | GeoServer slow or down | check with ONE small image, not capabilities: `curl -so /dev/null -w '%{http_code} %{content_type}
+' "http://162.245.218.6:8080/geoserver/wms?service=WMS&version=1.1.1&request=GetMap&layers=Landuse_LULC:scheme_boundary_hardoi&styles=&bbox=80.13,27.38,80.15,27.40&width=64&height=64&srs=EPSG:4326&format=image/png"`; tell the GeoServer owner |
+| One Vrindavan layer is blank but the others draw (GeoServer answers 200 with an XML error) | an SLD names a database column that no longer exists | request the layer with its style and read the message: `...&layers=Planning:vrindavan_layout&styles=vrindavan_PropertyType_label_plot_cat...` -> `The style specifies an attribute named 'x', not found`. Fix the column in the SLD and in `apps/dashboard/src/config/layoutFields.js` |
+| GeoServer answers 503 to everything after a reload | **never send `GetCapabilities` to the global endpoint right after a reload or restart**: it reads the column list of all ~600 layers over the 244 ms link, one at a time, under one lock; every repeat adds another pass and blocks all other requests (incident 2026-10-29). Send nothing and let it finish; check progress in `/opt/geoserver/data_dir/logs/geoserver.log` ('running requests / blocked requests') |
+| A layer is very slow the first time | GeoServer is 244 ms away | see architecture section 6 |
 | Style/data changed but map shows old picture | cached tiles | clear nginx cache + truncate GeoServer GWC; hard-refresh |
-| Chart / filter numbers look old | snapshots are generated | re-run `build-map-data.py`, PR, deploy |
 | `X-Edge-Cache` is always `MISS` | response is not an image, or request is not `GetMap` | expected for errors/capabilities; otherwise check the cache directory exists |
 | pgAdmin: "database postgres does not exist" | wrong maintenance DB | use `upavp_geo` as Maintenance database |
 | Login says sign-in is not configured | `VITE_DEMO_USERS` missing at build time | set the secret (CI) or `.env.production.local` (laptop) and redeploy |

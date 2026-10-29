@@ -15,7 +15,6 @@
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
-    "test:py": "python -m pytest apps/dashboard/scripts",
     "site": "bash infra/deploy/build-site.sh",
     "deploy": "bash infra/deploy/deploy.sh"
   }

@@ -130,7 +130,7 @@ They are static, small, and would otherwise need many slow GeoServer round trips
 
 | Level | Here | What it proves |
 |---|---|---|
-| Unit | `cql.test.js`, `demoAuth.test.js`, `test_allotment.py` | pure logic is right, edge cases (quotes, empty lists, NULL) |
+| Unit | `layoutFields.test.js`, `demoAuth.test.js` | pure logic is right, edge cases (quotes, empty lists, NULL) |
 | Data/contract | `data.test.js` | generated snapshots are consistent (counts add up, ids valid) |
 | Config | nginx `-t` in CI, shellcheck, actionlint | infrastructure files are valid before they touch a server |
 | Smoke | `smoke-test.sh` after every deploy | the live site works |

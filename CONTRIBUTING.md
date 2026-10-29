@@ -40,8 +40,8 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`, `perf`. This ma
 
 ## 3. What a good change contains
 
-* **Tests for logic.** Put pure logic in `apps/*/src/lib` (no React/OpenLayers) so it is easy to test - see `cql.test.js`.
-* **Generated files are generated.** Never hand-edit `apps/dashboard/src/data/*.json`; change the script and re-run it.
+* **Tests for logic.** Put pure logic in plain modules (no React/OpenLayers) so it is easy to test - see `apps/dashboard/src/config/layoutFields.test.js`.
+* **Database column names live in one file.** The dashboard reads columns of the Vrindavan layout table; they are listed in `apps/dashboard/src/config/layoutFields.js`. If a column is renamed in the database, change that file and the SLD styles together.
 * **No secrets.** Not in code, not in `.env` files that are committed, not in screenshots. Use GitHub secrets / a password manager.
   CI scans for secrets, but prevention is better than detection.
 * **Database / GeoServer changes** are files in `db/` or `geoserver/`, reviewed like code.
@@ -61,7 +61,6 @@ See the README quick start. Useful extras:
 
 ```bash
 npm run test --workspace @upavp/dashboard -- --watch     # tests re-run as you type
-python -m pytest apps/dashboard/scripts -q               # data-script tests
 bash infra/deploy/smoke-test.sh http://27.100.38.131:8070   # check the live pre-production site
 ```
 

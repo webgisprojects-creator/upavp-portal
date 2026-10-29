@@ -49,7 +49,7 @@ to work today - but it only helps you if **you can explain every part and defend
 | CD, deployment strategy, rollback | `.github/workflows/cd.yml`, `infra/deploy/*.sh` |
 | Linux, shell scripting | `infra/deploy/remote-activate.sh`, `smoke-test.sh` |
 | Web server / reverse proxy / caching | `infra/nginx/upavp-portal.conf` |
-| Testing | `apps/dashboard/src/lib/cql.test.js`, `src/data/data.test.js`, `apps/dashboard/scripts/test_allotment.py` |
+| Testing | `apps/dashboard/src/config/layoutFields.test.js`, `apps/login/src/auth/demoAuth.test.js` |
 | Security / secrets | `.gitignore`, `ci.yml` security job, `apps/login/src/auth/demoAuth.js`, `docs/github-setup.md` |
 | Databases / PostGIS | `db/setup/001_create_database.sql` |
 | GIS / performance | `docs/architecture.md` section 6, `geoserver/README.md` |

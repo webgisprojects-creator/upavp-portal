@@ -63,18 +63,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  python:
-    name: Python tests (data scripts)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: python -m pip install pytest
-      - run: python -m pytest apps/dashboard/scripts -q
-
   infra:
     name: Infrastructure checks (shell, nginx, workflows)
     runs-on: ubuntu-latest
@@ -126,7 +114,7 @@ jobs:
   ci-ok:
     name: CI passed
     if: always()
-    needs: [web, python, infra, security]
+    needs: [web, infra, security]
     runs-on: ubuntu-latest
     steps:
       - name: Check every job succeeded

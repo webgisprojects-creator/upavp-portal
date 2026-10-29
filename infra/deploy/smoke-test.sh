@@ -46,9 +46,15 @@ for path in /geoserver/web/ /geoserver/rest/workspaces; do
 done
 
 # soft: a real tile through the proxy
-tile="$BASE/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=AwasVikas:gda_water_bodies&STYLES=&TILED=true&WIDTH=256&HEIGHT=256&SRS=EPSG:3857&BBOX=8622096.79,3332654.43,8623319.78,3333877.43"
+tile="$BASE/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=Landuse_LULC:scheme_boundary_hardoi&STYLES=&WIDTH=128&HEIGHT=128&SRS=EPSG:3857&BBOX=8920467,3170678,8922867,3173078"
 ctype="$(curl -s -o /dev/null -w '%{content_type}' --max-time 45 "$tile")"
-[[ "$ctype" == image/* ]] && pass "map tile via GeoServer proxy ($ctype)" || warn "map tile did not return an image (GeoServer slow/unreachable?) - not blocking"
+[[ "$ctype" == image/* ]] && pass "map image via GeoServer proxy ($ctype)" || warn "map image did not return an image (GeoServer slow/unreachable?) - not blocking"
+
+# soft: the Vrindavan layout is drawn with a zoom-dependent SLD that names database columns. When the table is rebuilt
+# with other column names GeoServer answers 200 with an XML error instead of an image - the dashboard then shows nothing.
+vstyle="$BASE/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=Planning:vrindavan_layout&STYLES=vrindavan_PropertyType_label_plot_cat&WIDTH=64&HEIGHT=64&SRS=EPSG:3857&BBOX=9012015,3093779,9013415,3095179"
+vtype="$(curl -s -o /dev/null -w '%{content_type}' --max-time 60 "$vstyle")"
+[[ "$vtype" == image/* ]] && pass "Vrindavan layout style renders ($vtype)" || warn "Vrindavan layout style did not render ($vtype) - an SLD may name a column that no longer exists (see docs/runbook.md)"
 
 if [ "$FAIL" = 0 ]; then echo "== smoke test PASSED"; else echo "== smoke test FAILED"; fi
 exit "$FAIL"
