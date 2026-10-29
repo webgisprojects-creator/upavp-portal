@@ -15,6 +15,7 @@ import Fill from 'ol/style/Fill.js'
 import Stroke from 'ol/style/Stroke.js'
 import Style from 'ol/style/Style.js'
 import { LAYOUT_FIELDS } from '../config/layoutFields.js'
+import { BASEMAP_Z_INDEX, drawOrder, topFirst } from '../config/layerOrder.js'
 import MapInfoControl from './MapInfoControl.jsx'
 import 'ol/ol.css'
 
@@ -68,6 +69,7 @@ function createBaseLayers() {
         attributions: '&copy; OpenStreetMap contributors',
         crossOrigin: 'anonymous',
       }),
+      zIndex: BASEMAP_Z_INDEX.imagery,
       visible: false,
     }),
     satellite: new TileLayer({
@@ -76,6 +78,7 @@ function createBaseLayers() {
         attributions: 'Tiles &copy; Esri',
         crossOrigin: 'anonymous',
       }),
+      zIndex: BASEMAP_Z_INDEX.imagery,
       visible: false,
     }),
     hybridImagery: new TileLayer({
@@ -84,6 +87,7 @@ function createBaseLayers() {
         attributions: 'Tiles &copy; Esri',
         crossOrigin: 'anonymous',
       }),
+      zIndex: BASEMAP_Z_INDEX.imagery,
       visible: true,
     }),
     hybridLabels: new TileLayer({
@@ -92,6 +96,7 @@ function createBaseLayers() {
         attributions: 'Labels &copy; Esri',
         crossOrigin: 'anonymous',
       }),
+      zIndex: BASEMAP_Z_INDEX.labels, // above the (opaque) data layers, otherwise the place names are never visible
       visible: false,
     }),
   }
@@ -201,8 +206,7 @@ function MapContainer({
       setPopup({ loading: true, features: [], error: '' })
 
       const { layers: currentLayers, visibleLayers: currentVisibility } = layerConfigRef.current
-      const activeLayers = [...currentLayers]
-        .reverse()
+      const activeLayers = topFirst(currentLayers)
         .filter(({ id }) => currentVisibility[id])
         .map((item) => ({ ...item, mapLayer: wmsLayersRef.current[item.id] }))
         .filter(({ mapLayer }) => mapLayer?.getVisible())
@@ -332,6 +336,7 @@ function MapContainer({
         })
         layer = new ImageLayer({
           source,
+          zIndex: drawOrder(item.id), // fixed stacking (see config/layerOrder.js), not "order of first creation"
           visible: Boolean(visibleLayers[item.id]),
           className: item.id.includes('lulc')
             ? 'lulc-background-layer'
@@ -484,7 +489,7 @@ function MapContainer({
   const activeFailedLayers = layers
     .filter(({ id }) => visibleLayers[id] && failedLayers[id])
     .map(({ id }) => failedLayers[id])
-  const mapLegendItems = layers
+  const mapLegendItems = topFirst(layers)
     .filter(({ id }) => visibleLayers[id])
     .flatMap((item) => {
       if (item.id.includes('cadastral')) {

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { LAYOUT_FIELDS } from './config/layoutFields.js'
+import { topFirst } from './config/layerOrder.js'
 import BasemapSwitcher from './components/BasemapSwitcher.jsx'
 import CityLayerPanel from './components/CityLayerPanel.jsx'
 import Footer from './components/Footer.jsx'
@@ -91,6 +92,9 @@ function App() {
   // Must keep the same identity between renders: the map re-syncs its WMS layers whenever this array changes,
   // and the zoom state below changes many times a second while the user zooms.
   const mapLayers = useMemo(() => [...layers, ...activePlanningLayers], [layers, activePlanningLayers])
+  // the panel lists layers in the same order they are drawn on the map, topmost first
+  const panelLayers = useMemo(() => topFirst(layers), [layers])
+  const panelPlanningLayers = useMemo(() => topFirst(activePlanningLayers), [activePlanningLayers])
   const activeLayoutLayer = activePlanningLayers.find(
     ({ id }) => id === 'vrindavan-layout' && visibleLayers[id],
   )
@@ -171,8 +175,8 @@ function App() {
         <div className="map-workspace">
           <CityLayerPanel
             city={city}
-            layers={layers}
-            planningLayers={activePlanningLayers}
+            layers={panelLayers}
+            planningLayers={panelPlanningLayers}
             visibleLayers={visibleLayers}
             propertyStatusEnabled={propertyStatusEnabled}
             onPropertyStatusToggle={() => {

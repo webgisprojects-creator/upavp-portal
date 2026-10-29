@@ -30,8 +30,8 @@ Geo-enabled portal for **Awas Vikas Parishad (U.P. Housing & Development Board)*
 ```
 apps/
   login/            Login page            (React 19 + Vite 7)
-  dashboard/        Land Use Acquisition dashboard (React 19 + OpenLayers + Vite 8), served at /AwasVikas/
-    src/config/       database column names the Vrindavan layout code depends on (unit-tested)
+  dashboard/        UPAVP Geo Dashboard (React 19 + OpenLayers + Vite 8), served at /AwasVikas/
+    src/config/       database column names the Vrindavan layout code depends on, and the map drawing order (unit-tested)
 infra/
   deploy/           build-site.sh · deploy.sh · remote-activate.sh · rollback.sh · smoke-test.sh · warm_cache.py
   nginx/            upavp-portal.conf     (the site definition installed on the server)
