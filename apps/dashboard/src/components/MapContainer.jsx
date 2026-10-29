@@ -565,6 +565,13 @@ function MapContainer({
   const mapLegendItems = topFirst(layers)
     .filter(({ id }) => visibleLayers[id])
     .flatMap((item) => {
+      // Lucknow: the cadastral layer is drawn with the black village style, the village boundary is a filled layer
+      if (item.id === 'vrindavan-village-cadastral') {
+        return [{ id: item.id, name: 'Village Cadastral', symbol: 'village' }]
+      }
+      if (item.id === 'vrindavan-village-boundary') {
+        return [{ id: item.id, name: 'Village Boundary', symbol: 'villagearea' }]
+      }
       if (item.id.includes('cadastral')) {
         return [{ id: item.id, name: 'Cadastral', symbol: 'cadastral' }]
       }
