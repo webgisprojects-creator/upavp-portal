@@ -102,6 +102,31 @@ function createBaseLayers() {
   }
 }
 
+// Geometry of one chart category, for the yellow highlight. Only the geometry column is requested (the highlight needs no
+// attributes) and in EPSG:4326 so GeoServer does not have to reproject; the browser reprojects.
+async function fetchCategoryGeometry(layer, cqlFilter, signal) {
+  const base = {
+    service: 'WFS',
+    version: '1.1.0',
+    request: 'GetFeature',
+    typeName: layer,
+    outputFormat: 'application/json',
+    srsName: 'EPSG:4326',
+    CQL_FILTER: cqlFilter,
+    maxFeatures: '100000',
+  }
+  let status = 0
+  for (const extra of [{ propertyName: 'geom' }, {}]) {
+    const response = await fetch(`${geoserverWfsUrl}?${new URLSearchParams({ ...base, ...extra })}`, { signal })
+    status = response.status
+    if (response.ok) {
+      const data = JSON.parse(await response.text())
+      if (Array.isArray(data.features)) return data
+    }
+  }
+  throw new Error(`GeoServer returned HTTP ${status}.`)
+}
+
 function MapContainer({
   basemap,
   city,
@@ -112,6 +137,7 @@ function MapContainer({
   propertyStatusEnabled,
   onMapReady,
   onZoomChange,
+  onSelectionLoadingChange,
 }) {
   const targetRef = useRef(null)
   const popupRef = useRef(null)
@@ -126,11 +152,17 @@ function MapContainer({
   const [mapInstance, setMapInstance] = useState(null)
   const [failedLayers, setFailedLayers] = useState({})
   const [selectionError, setSelectionError] = useState('')
+  const [selectionLoading, setSelectionLoading] = useState(false)
+  const highlightCacheRef = useRef(new Map()) // category geometry already downloaded: selecting it again is instant
   const [popup, setPopup] = useState(null)
 
   useEffect(() => {
     layerConfigRef.current = { layers, visibleLayers }
   }, [layers, visibleLayers])
+
+  useEffect(() => {
+    onSelectionLoadingChange?.(selectionLoading)
+  }, [onSelectionLoadingChange, selectionLoading])
 
   useEffect(() => {
     highlightSourceRef.current?.clear()
@@ -408,6 +440,7 @@ function MapContainer({
     const source = categoryHighlightSourceRef.current
     source?.clear()
     setSelectionError('')
+    setSelectionLoading(false)
     if (!source || !mapInstance || !selectedLulcCategory) return undefined
 
     const selectedLayer =
@@ -438,36 +471,28 @@ function MapContainer({
     const controller = new AbortController()
     async function loadCategoryFeatures() {
       try {
-        const params = new URLSearchParams({
-          service: 'WFS',
-          version: '1.1.0',
-          request: 'GetFeature',
-          typeName: selectedLayer.layer,
-          outputFormat: 'application/json',
-          srsName: mapInstance.getView().getProjection().getCode(),
-          CQL_FILTER: clauses.join(' AND '),
-          maxFeatures: '100000',
-        })
-        const response = await fetch(`${geoserverWfsUrl}?${params}`, {
-          signal: controller.signal,
-        })
-        const responseText = await response.text()
-        if (!response.ok) {
-          throw new Error(`GeoServer returned HTTP ${response.status}.`)
-        }
-
-        const data = JSON.parse(responseText)
-        if (!Array.isArray(data.features)) {
-          throw new Error('GeoServer did not return selected LULC features.')
+        const cqlFilter = clauses.join(' AND ')
+        const cacheKey = `${selectedLayer.layer}|${cqlFilter}`
+        let data = highlightCacheRef.current.get(cacheKey)
+        if (!data) {
+          setSelectionLoading(true)
+          data = await fetchCategoryGeometry(selectedLayer.layer, cqlFilter, controller.signal)
+          highlightCacheRef.current.set(cacheKey, data)
         }
         const features = new GeoJSON().readFeatures(data, {
+          dataProjection: 'EPSG:4326',
           featureProjection: mapInstance.getView().getProjection(),
         })
         source.addFeatures(features)
         if (features.length) {
+          // The Vrindavan chart changes its categories at zoom 16: do not let the zoom-to-selection cross that level and
+          // clear the selection it has just made.
+          const zoomStyled = layers.some((item) => item.zoomStyle && item.layer === selectedLayer.layer)
+          const zoomNow = mapInstance.getView().getZoom() ?? 0
+          const maxZoom = zoomStyled ? (zoomNow >= 16 ? 19 : 15.9) : 17
           mapInstance.getView().fit(source.getExtent(), {
             padding: [70, 70, 70, 70],
-            maxZoom: 17,
+            maxZoom,
             duration: 600,
           })
         }
@@ -476,6 +501,8 @@ function MapContainer({
         setSelectionError(
           error instanceof Error ? error.message : 'Unable to highlight selected LULC features.',
         )
+      } finally {
+        if (!controller.signal.aborted) setSelectionLoading(false)
       }
     }
 
@@ -605,6 +632,12 @@ function MapContainer({
         <div className="map-container__status" role="status">
           <strong>GeoServer connection</strong>
           <span>{statusMessage}</span>
+        </div>
+      )}
+      {selectionLoading && (
+        <div className="map-container__busy" role="status">
+          <span className="map-container__spinner" aria-hidden="true" />
+          Highlighting {selectedLulcCategory?.className ?? 'selection'} on the map…
         </div>
       )}
       {selectionError && (

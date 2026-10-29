@@ -78,8 +78,10 @@ function App() {
   const [mapInstance, setMapInstance] = useState(null)
   const [zoomLevel, setZoomLevel] = useState(14.5)
   const previousZoomLevelRef = useRef(14.5)
+  const zoomDependentChartRef = useRef(false) // true while the chart's categories change at zoom 16 (Vrindavan layout)
   const [selectedLulcCategory, setSelectedLulcCategory] = useState('')
   const [propertyStatusEnabled, setPropertyStatusEnabled] = useState(false)
+  const [selectionLoading, setSelectionLoading] = useState(false)
   const [visibleLayers, setVisibleLayers] = useState(() =>
     Object.fromEntries([
       ...cityLayers.katra.map(({ id }) => [id, true]),
@@ -102,6 +104,7 @@ function App() {
   const chartLayer = selectedPlanningLayer?.layer ??
     cityLayers[city].find(({ id }) => id.includes('lulc'))?.layer
   const isLayoutChart = Boolean(selectedPlanningLayer)
+  zoomDependentChartRef.current = isLayoutChart
   const chartCategoryProperty = isLayoutChart
     ? propertyStatusEnabled
       ? LAYOUT_FIELDS.propertyStatus
@@ -112,7 +115,10 @@ function App() {
 
   const handleMapZoomChange = useCallback((nextZoom) => {
     const crossedThreshold = (previousZoomLevelRef.current >= 16) !== (nextZoom >= 16)
-    if (crossedThreshold) {
+    // Only the Vrindavan layout chart changes its categories at zoom 16 (scheme <-> property type), so only there does a
+    // selection stop making sense. For the LULC charts this used to clear the selection right after it was made, because
+    // zooming to the highlighted area crosses level 16.
+    if (crossedThreshold && zoomDependentChartRef.current) {
       setSelectedLulcCategory(null)
     }
     previousZoomLevelRef.current = nextZoom
@@ -198,6 +204,7 @@ function App() {
             propertyStatusEnabled={propertyStatusEnabled}
             onMapReady={setMapInstance}
             onZoomChange={handleMapZoomChange}
+            onSelectionLoadingChange={setSelectionLoading}
           />
           <LulcChart
             city={city}
@@ -214,6 +221,7 @@ function App() {
             }
             selectedCategory={selectedLulcCategory}
             onCategorySelect={handleCategorySelect}
+            highlightLoading={selectionLoading}
           />
         </div>
       </main>

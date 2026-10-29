@@ -97,6 +97,28 @@ function getClassColor(name, index, categoryProperty) {
   return fallbackColors[index % fallbackColors.length]
 }
 
+// Donut geometry (viewBox 180 x 180). Every slice is its OWN wedge-shaped path, so a click or hover only ever reaches the slice
+// under the pointer. (Before, each slice was a full-circle outline with a dash pattern: browsers hit-test the whole ring, so a click
+// on almost any slice selected the first one.)
+const DONUT_CENTER = 90
+const DONUT_OUTER = 80
+const DONUT_INNER = 56
+
+function polar(radius, fraction) {
+  const angle = fraction * 2 * Math.PI - Math.PI / 2 // 0 = 12 o clock, clockwise
+  return [DONUT_CENTER + radius * Math.cos(angle), DONUT_CENTER + radius * Math.sin(angle)]
+}
+
+function slicePath(start, rawEnd) {
+  const end = Math.min(rawEnd, start + 0.9999) // a full circle cannot be drawn as one arc
+  const large = end - start > 0.5 ? 1 : 0
+  const [x0, y0] = polar(DONUT_OUTER, start)
+  const [x1, y1] = polar(DONUT_OUTER, end)
+  const [x2, y2] = polar(DONUT_INNER, end)
+  const [x3, y3] = polar(DONUT_INNER, start)
+  return `M${x0} ${y0} A${DONUT_OUTER} ${DONUT_OUTER} 0 ${large} 1 ${x1} ${y1} L${x2} ${y2} A${DONUT_INNER} ${DONUT_INNER} 0 ${large} 0 ${x3} ${y3} Z`
+}
+
 function LulcChart({
   city,
   layer,
@@ -104,7 +126,9 @@ function LulcChart({
   chartTitle = 'LULC by Class and Subclass',
   selectedCategory,
   onCategorySelect,
+  highlightLoading = false,
 }) {
+  const [hovered, setHovered] = useState(null)
   const dataLabel = categoryProperty === 'class' ? 'LULC' : 'layout'
   const [chartState, setChartState] = useState({
     key: '',
@@ -305,21 +329,30 @@ function LulcChart({
       ? chartState.error
       : ''
   const totalArea = classes.reduce((total, item) => total + item.area, 0)
-  const circumference = 2 * Math.PI * 68
-  const chartSegments = classes.reduce((segments, { name, area }) => {
-    const index = segments.length
-    const offset = segments.at(-1)
-    const segmentLength = totalArea > 0 ? (area / totalArea) * circumference : 0
-    return [
-      ...segments,
-      {
-        name,
-        color: getClassColor(name, index, categoryProperty),
-        offset: offset ? offset.offset + offset.segmentLength : 0,
-        segmentLength,
-      },
-    ]
-  }, [])
+  let cursor = 0
+  const slices = classes.map(({ name, area }, index) => {
+    const fraction = totalArea > 0 ? area / totalArea : 0
+    const slice = {
+      name,
+      area,
+      fraction,
+      color: getClassColor(name, index, categoryProperty),
+      start: cursor,
+      end: cursor + fraction,
+    }
+    cursor += fraction
+    return slice
+  })
+  const isSelected = (name) =>
+    selectedCategory?.className === name &&
+    selectedCategory?.categoryProperty === resolvedCategoryProperty &&
+    selectedCategory?.layer === layer
+  const selectClass = (name) =>
+    onCategorySelect({ className: name, categoryProperty: resolvedCategoryProperty, layer })
+  const activeName =
+    hovered ?? (selectedCategory && isSelected(selectedCategory.className) ? selectedCategory.className : null)
+  const focused = slices.find(({ name }) => name === activeName)
+  const hasSelection = classes.some(({ name }) => isSelected(name))
 
   return (
     <aside className="lulc-chart" aria-label={`${cityNames[city]} LULC chart`}>
@@ -348,64 +381,65 @@ function LulcChart({
       )}
       {!loading && !error && classes.length > 0 && (
         <div className="lulc-chart__content">
+          {highlightLoading && (
+            <p className="lulc-chart__busy" role="status">
+              <span className="lulc-chart__spinner" aria-hidden="true" />
+              Highlighting on the map…
+            </p>
+          )}
           <div
             className="lulc-chart__donut"
             role="group"
             aria-label={`LULC areas by class, total ${totalArea.toFixed(1)} hectares`}
           >
-            <svg viewBox="0 0 180 180" aria-hidden="true">
-              <circle className="lulc-chart__donut-track" cx="90" cy="90" r="68" />
-              {chartSegments.map(({ name, color, segmentLength, offset }) => (
-                <circle
-                  className="lulc-chart__donut-segment"
+            <svg viewBox="0 0 180 180">
+              <circle
+                className="lulc-chart__donut-track"
+                cx={DONUT_CENTER}
+                cy={DONUT_CENTER}
+                r={(DONUT_OUTER + DONUT_INNER) / 2}
+              />
+              {slices.map(({ name, area, fraction, color, start, end }) => (
+                <path
+                  className={`lulc-chart__slice${isSelected(name) ? ' is-selected' : ''}${
+                    hasSelection && !isSelected(name) ? ' is-dimmed' : ''
+                  }${activeName === name ? ' is-active' : ''}`}
                   key={name}
-                  cx="90"
-                  cy="90"
-                  r="68"
-                  stroke={color}
-                  strokeDasharray={`${segmentLength} ${circumference - segmentLength}`}
-                  strokeDashoffset={-offset}
+                  d={slicePath(start, end)}
+                  fill={color}
                   role="button"
                   tabIndex={0}
                   aria-label={`Highlight map by ${name}`}
-                  aria-pressed={
-                    selectedCategory?.className === name &&
-                    selectedCategory?.categoryProperty === resolvedCategoryProperty &&
-                    selectedCategory?.layer === layer
-                  }
-                  style={{
-                    cursor: 'pointer',
-                    opacity:
-                      selectedCategory &&
-                      (selectedCategory.className !== name ||
-                        selectedCategory.categoryProperty !== resolvedCategoryProperty ||
-                        selectedCategory.layer !== layer)
-                        ? 0.3
-                        : 1,
-                  }}
-                  onClick={() =>
-                    onCategorySelect({
-                      className: name,
-                      categoryProperty: resolvedCategoryProperty,
-                      layer,
-                    })
-                  }
+                  aria-pressed={isSelected(name)}
+                  onClick={() => selectClass(name)}
+                  onMouseEnter={() => setHovered(name)}
+                  onMouseLeave={() => setHovered(null)}
+                  onFocus={() => setHovered(name)}
+                  onBlur={() => setHovered(null)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      onCategorySelect({
-                        className: name,
-                        categoryProperty: resolvedCategoryProperty,
-                        layer,
-                      })
+                      selectClass(name)
                     }
                   }}
-                />
+                >
+                  <title>{`${name}: ${area.toLocaleString(undefined, { maximumFractionDigits: 1 })} ha (${(fraction * 100).toFixed(1)}%)`}</title>
+                </path>
               ))}
             </svg>
-            <div className="lulc-chart__donut-label">
-              <strong>{totalArea.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>
-              <span>hectares</span>
+            <div className="lulc-chart__donut-label" aria-live="polite">
+              {focused ? (
+                <>
+                  <span className="lulc-chart__donut-name" title={focused.name}>{focused.name}</span>
+                  <strong>{focused.area.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>
+                  <span>ha · {(focused.fraction * 100).toFixed(1)}%</span>
+                </>
+              ) : (
+                <>
+                  <strong>{totalArea.toLocaleString(undefined, { maximumFractionDigits: 1 })}</strong>
+                  <span>hectares</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -422,13 +456,9 @@ function LulcChart({
                     selectedCategory.categoryProperty === resolvedCategoryProperty &&
                     selectedCategory.layer === layer
                   }
-                  onClick={() =>
-                    onCategorySelect({
-                      className: name,
-                      categoryProperty: resolvedCategoryProperty,
-                      layer,
-                    })
-                  }
+                  onClick={() => selectClass(name)}
+                  onMouseEnter={() => setHovered(name)}
+                  onMouseLeave={() => setHovered(null)}
                 >
                   <span
                     className="lulc-chart__swatch"
