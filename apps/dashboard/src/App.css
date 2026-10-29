@@ -652,6 +652,13 @@ height: 73vh;
   border-color: #111;
 }
 
+.map-legend__symbol--villagearea {
+  border-top-width: 10px;
+  border-color: #00204d; /* SLD Vrindavan_village_boundary */
+  border-top-style: solid;
+  border-radius: 2px;
+}
+
 .map-legend__symbol--sector {
   border-color: #2ee844; /* SLD Merge_sector_boundary */
 }

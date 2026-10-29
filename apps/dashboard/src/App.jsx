@@ -58,13 +58,19 @@ const cityLayers = {
     { id: 'unnao-scheme', name: 'Scheme boundary', layer: 'Landuse_LULC:scheme_boundary_unnao' },
     { id: 'unnao-village', name: 'Village boundary', layer: 'Landuse_LULC:village_boundary_unnao' },
   ],
-  // Lucknow / Vrindavan "Land Acquisition layers" (workspace Planning). "Village Boundary" is the GIS team's styled
-  // "vrindavan merge layer"; Dhara 28 / Dhara 32 are the two statutory outlines.
+  // Lucknow / Vrindavan "Land Acquisition layers" (workspace Planning): the village cadastral (the 9,137 parcels of "vrindavan merge
+  // layer"), the village boundary (5 filled village polygons - drawn at the bottom, under the plots) and the two statutory outlines
+  // Dhara 28 / Dhara 32.
   lucknow: [
+    {
+      id: 'vrindavan-village-cadastral',
+      name: 'Village Cadastral',
+      layer: 'Planning:vrindavan merge layer',
+    },
     {
       id: 'vrindavan-village-boundary',
       name: 'Village Boundary',
-      layer: 'Planning:vrindavan merge layer',
+      layer: 'Planning:vrindavan village boundary',
     },
     { id: 'dhara-28', name: 'Dhara 28 Layer', layer: 'Planning:dhara28' },
     { id: 'dhara-32', name: 'Dhara 32 Layer', layer: 'Planning:dhara32' },
