@@ -58,13 +58,15 @@ const cityLayers = {
   lucknow: [],
 }
 
-// Lucknow / Vrindavan layers (workspace Planning). `defaultVisible: false` = listed in the panel but switched on by the user
-// (the heavy or overlapping ones). The names are what the panel, legend and info popup show; GeoServer's own titles are just the
-// table names ("vrindavan merge layer").
+// Lucknow / Vrindavan layers (workspace Planning). `group` decides the panel section: 'land' = "Land Acquisition layers" (the
+// same set every other city has: scheme boundary, village boundary, cadastral), 'planning' = "Planning & Development layers".
+// `defaultVisible: false` = listed but switched on by the user (the heavy or overlapping ones). The names are what the panel,
+// legend and info popup show; GeoServer's own titles are just the table names ("vrindavan merge layer").
 const planningLayers = [
   {
     id: 'vrindavan-layout',
     name: 'Vrindavan Plot Layout',
+    group: 'planning',
     layer: 'Planning:vrindavan_layout',
     zoomStyle: {
       threshold: 16,
@@ -75,17 +77,19 @@ const planningLayers = [
   {
     id: 'vrindavan-sector6-landuse',
     name: 'Vrindavan Sector 6 Land Use',
+    group: 'planning',
     layer: 'Planning:vrindavan sector 6 landuse',
     defaultVisible: false,
   },
   {
     id: 'vrindavan-cadastral',
     name: 'Vrindavan Cadastral (Gata / Khasra)',
+    group: 'land',
     layer: 'Planning:vrindavan merge layer',
     defaultVisible: false,
   },
-  { id: 'vrindavan-village-boundary', name: 'Vrindavan Village Boundary', layer: 'Planning:vrindavan village boundary' },
-  { id: 'vrindavan-scheme-boundary', name: 'Vrindavan Scheme Boundary', layer: 'Planning:vrindavan scheme boundary' },
+  { id: 'vrindavan-village-boundary', name: 'Vrindavan Village Boundary', group: 'land', layer: 'Planning:vrindavan village boundary' },
+  { id: 'vrindavan-scheme-boundary', name: 'Vrindavan Scheme Boundary', group: 'land', layer: 'Planning:vrindavan scheme boundary' },
 ]
 
 const planningDefaults = () =>
@@ -113,9 +117,16 @@ function App() {
   // Must keep the same identity between renders: the map re-syncs its WMS layers whenever this array changes,
   // and the zoom state below changes many times a second while the user zooms.
   const mapLayers = useMemo(() => [...layers, ...activePlanningLayers], [layers, activePlanningLayers])
-  // the panel lists layers in the same order they are drawn on the map, topmost first
-  const panelLayers = useMemo(() => topFirst(layers), [layers])
-  const panelPlanningLayers = useMemo(() => topFirst(activePlanningLayers), [activePlanningLayers])
+  // the panel lists layers in the same order they are drawn on the map, topmost first; the Vrindavan land-record layers
+  // (scheme / village boundary, cadastral) sit in the same "Land Acquisition layers" section as every other city's
+  const panelLayers = useMemo(
+    () => topFirst([...layers, ...activePlanningLayers.filter(({ group }) => group === 'land')]),
+    [layers, activePlanningLayers],
+  )
+  const panelPlanningLayers = useMemo(
+    () => topFirst(activePlanningLayers.filter(({ group }) => group !== 'land')),
+    [activePlanningLayers],
+  )
   const activeLayoutLayer = activePlanningLayers.find(
     ({ id }) => id === 'vrindavan-layout' && visibleLayers[id],
   )
