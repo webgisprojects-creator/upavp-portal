@@ -21,10 +21,9 @@ gh secret set NAME < file | gh variable set NAME --body value
 
 ## This project
 ```bash
-npm install | npm run dev:dashboard | npm run dev:login | npm run lint | npm test | npm run test:py | npm run build | npm run site
+npm install | npm run dev:dashboard | npm run dev:login | npm run lint | npm test | npm run build | npm run site
 bash infra/deploy/deploy.sh [--force] | rollback.sh [--list] [release] | smoke-test.sh <url> [commit]
 python infra/deploy/warm_cache.py [--radius-km 12 --max-zoom 17]
-python apps/dashboard/scripts/build-map-data.py          # regenerate data snapshots (needs ssh to db-primary)
 curl -s http://27.100.38.131:8070/revision.json          # what is live
 ```
 

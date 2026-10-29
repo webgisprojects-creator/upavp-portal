@@ -10,10 +10,10 @@ railway and water bodies on a map, with a summary chart, a landuse filter and ba
 | Piece | Host | Address | Notes |
 |---|---|---|---|
 | Portal web server | `pre-production-testing` | 27.100.38.131 :8070 | nginx 1.18 (Ubuntu). Site `upavp-portal`. Static files only |
-| Map server | GeoServer 2.27 (Tomcat 9) | 162.245.218.6 :8080 | Workspace `AwasVikas`. **Shared with another portal**; reached only via the portal's `/geoserver/` proxy |
+| Map server | GeoServer 2.27 (Tomcat 9) | 162.245.218.6 :8080 | Workspaces `Landuse_LULC` and `Planning` (the dashboard), `AwasVikas` (kept, no longer used by the dashboard). **Shared with another portal**; reached only via the portal's `/geoserver/` proxy |
 | Database | `db-primary` (PostgreSQL 17 + PostGIS 3.6) | 27.100.38.132 :5432 / PgBouncer :6432 | Database `upavp_geo` |
 | Load balancer | `load-balancer-2` (nginx) | 27.100.38.133 | **Not used by this project yet** (it fronts the older app on :8060) |
-| Old dashboard | IIS (Windows) | 103.15.81.74 `/AwasVikas/` | Reference only; keep until the team signs off the new flow |
+| Old dashboard | IIS (Windows) | 103.15.81.74 `/AwasVikas/` | Reference only; replaced by the Land Use Acquisition dashboard below |
 
 Also on the pre-prod server and **not to be disturbed**: a PM2 app on :8060 and the `wipzo.in` site on 80/443.
 
@@ -31,10 +31,14 @@ React 19 + Vite 7. A full-screen video background (skipped on slow links / data-
 **Authentication is temporary**: a build-time list of demo users (`VITE_DEMO_USERS`) is checked in the browser. This is *not* security.
 
 ### Dashboard (`apps/dashboard`)
-React 19 + OpenLayers 10 + Vite 8. Layers are **tiled WMS** requests (256 px, EPSG:3857) so GeoServer's tile cache is used.
-* `src/lib/cql.js` - pure functions that build the GeoServer filters for the chart and the landuse filter (unit-tested).
-* `src/data/*.json` - generated snapshots (plot areas, landuse labels and classes, legends, allotment statistics).
-* Tile loader retries failed tiles; a per-layer "Loading..." indicator; plots are only drawn from zoom 15 (172k polygons).
+"Land Use Acquisition" dashboard: React 19 + OpenLayers 10 + Vite 8, served at `/AwasVikas/` (the login page redirects there).
+Per city (Katra, Majhola, Hardoi, Ayodhya, Barabanki, Sikandra, Unnao) it shows land use / land cover, cadastral, scheme and village
+boundaries from workspace `Landuse_LULC`; for Lucknow it shows the Vrindavan layout and scheme boundary from workspace `Planning`.
+Layers are single-image WMS requests (`ImageWMS`) through the same-origin `/geoserver/wms` proxy; charts, search boxes and the
+feature-info popup read the same layers through WFS. Basemaps: OSM, Esri satellite, Esri hybrid.
+* `src/config/layoutFields.js` - **the database column names the Vrindavan layout code depends on** (unit-tested). The SLD styles in
+  GeoServer name the same columns, so a renamed column must be changed in both places (see runbook).
+* There is no generated data any more: everything is read live from GeoServer.
 
 ### nginx site (`infra/nginx/upavp-portal.conf`)
 Serves both apps, proxies **only** read-only OGC requests to GeoServer (`wms|wfs|ows`, GET/HEAD/OPTIONS; the GeoServer web UI and REST API
@@ -53,7 +57,7 @@ return 404), keeps a persistent connection to GeoServer, and caches finished `Ge
 Schemas `auth`, `app` (reserved for the backend) and `public` (currently holds the 8 GIS layers). PgBouncer aliases exist for each role.
 
 ### GeoServer (`geoserver/`)
-Workspace `AwasVikas`, store `Awas_Vikas_Parishad`, 8 layers, 8 SLD styles, tile cache (GWC) enabled.
+Workspaces used by the dashboard: `Landuse_LULC` (29 layers, 7 cities) and `Planning` (Vrindavan layout, styles `vrindavan_PropertyType_label_plot_cat` and `vrindavan_Alloted_label_plot_cat`). Workspace `AwasVikas` (store `Awas_Vikas_Parishad`, 8 layers) is kept but no longer used. The stores read the database through the shared JNDI pool `java:comp/env/jdbc/upavp_geo`.
 
 ## 4. Design decisions (short ADRs)
 
@@ -64,7 +68,7 @@ Workspace `AwasVikas`, store `Awas_Vikas_Parishad`, 8 layers, 8 SLD styles, tile
 | 3 | **Immutable releases + atomic symlink switch** | Deploy and rollback are a single rename; visitors never see a half-deployed site | Releases use disk (pruned to the newest 5) |
 | 4 | **Server holds built files only** | No source or build tools on a shared, almost-full server; smaller attack surface | Changes can only come through the pipeline (intended) |
 | 5 | **nginx edge cache + tiled WMS** | GeoServer is 244 ms away; cached tiles are served locally in ~0.1 s | Stale tiles for up to 2 days after a data/style change (clear the cache) |
-| 6 | **Data snapshots generated from the DB** | Orientation, labels, filter and chart need no GeoServer round trips | Snapshots go stale: regenerate after data changes (tests guard their integrity) |
+| 6 | **Charts and searches read GeoServer live (WFS)** | Always current: no generated files to refresh after a data change | Every chart / search is a request over the 244 ms link (the LULC chart downloads the whole layer's geometry); the Vrindavan layout is ~19,800 plots |
 | 7 | **Dedicated database and roles** | Isolation from the other projects; least privilege | One more database to back up and monitor |
 | 8 | **Read-only proxy to GeoServer** | The browser never reaches the GeoServer admin UI/REST | Features needing POST/WFS-T would need an explicit rule |
 

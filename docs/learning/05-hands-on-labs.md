@@ -32,14 +32,16 @@ curl -s -o /dev/null -D - "http://27.100.38.131:8070/geoserver/wms?$Q" | grep -i
 **Explain it back:** "unit tests catch logic, infra checks catch config, gitleaks catches secrets - three different classes of mistake."
 **Stretch:** push the branch, open a PR, watch the red cross and the "CI passed" check stay red.
 
-## Lab 3 - Add a test for a new rule (45 min)
-**Goal:** practise test-driven thinking.
-**Steps:** the plot status `"Alotted"` is already handled. Add a new spelling `"Allotment Done"`:
-1. Write the failing test in `apps/dashboard/scripts/test_allotment.py` (decide: allotted? other?).
-2. Run `npm run test:py` - it fails. Change `categorize()` minimally. It passes.
-3. Run `python apps/dashboard/scripts/build-map-data.py` if you can reach db-primary and inspect the diff of `allotment-stats.json`.
-**Explain it back:** why is the rule in a function with a test instead of inside the big script?
-**Stretch:** add a property-style test: for any string with the letters "not" first, the result is never `allotted`.
+## Lab 3 - A renamed column breaks a layer (45 min)
+**Goal:** see why the database, the SLD style and the code must agree - and where the tests help.
+**Steps**
+1. Read `apps/dashboard/src/config/layoutFields.js` and its test `layoutFields.test.js`.
+2. Pretend the GIS team renamed `status` to `plot_status`. In the test, change the sample column list accordingly: it fails, naming the column that is gone.
+3. Fix `LAYOUT_FIELDS.propertyStatus`, run `npm test -w @upavp/dashboard`: green.
+4. Read `docs/runbook.md`, row "One Vrindavan layer is blank but the others draw", and request the style from GeoServer to see the real error message
+   (`The style specifies an attribute named '...', not found`).
+**Explain it back:** why does GeoServer answer HTTP 200 with an XML error, and why does the map then show nothing instead of an error page?
+**Stretch:** the deploy smoke test has a soft check for exactly this. Find it in `infra/deploy/smoke-test.sh`.
 
 ## Lab 4 - Rollback drill (20 min, pre-production)
 **Goal:** be fast and calm during an incident.

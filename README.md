@@ -30,10 +30,8 @@ Geo-enabled portal for **Awas Vikas Parishad (U.P. Housing & Development Board)*
 ```
 apps/
   login/            Login page            (React 19 + Vite 7)
-  dashboard/        GIS dashboard         (React 19 + OpenLayers + Vite 8)
-    src/lib/          pure, unit-tested logic (CQL filter builders)
-    src/data/         generated data snapshots (see "Data snapshots")
-    scripts/          build-map-data.py + tests
+  dashboard/        Land Use Acquisition dashboard (React 19 + OpenLayers + Vite 8), served at /AwasVikas/
+    src/config/       database column names the Vrindavan layout code depends on (unit-tested)
 infra/
   deploy/           build-site.sh · deploy.sh · remote-activate.sh · rollback.sh · smoke-test.sh · warm_cache.py
   nginx/            upavp-portal.conf     (the site definition installed on the server)
@@ -58,7 +56,6 @@ cp apps/login/.env.example apps/login/.env.local     # then edit: sign-in is dis
 |---|---|
 | `npm run lint` | oxlint on both apps |
 | `npm test` | Vitest unit tests (CQL builders, data-snapshot integrity, demo auth) |
-| `npm run test:py` | pytest for the data scripts |
 | `npm run build` | production build of both apps |
 | `npm run site` | build + package the deployable artifact (`dist-site/portal-<commit>.tar.gz`) |
 
@@ -68,16 +65,6 @@ cp apps/login/.env.example apps/login/.env.local     # then edit: sign-in is dis
 2. **CI must be green** and one teammate must approve. Nobody pushes to `main` directly.
 3. Merging to `main` **deploys automatically to pre-production** (same artifact CI built). Rollback is one click.
 4. Never edit files on the server: the server only receives builds. A hot-fix is a PR like any other change.
-
-## Data snapshots
-
-Orientation areas, landuse labels/filter, legends and chart statistics are **generated from the database** into
-`apps/dashboard/src/data/*.json` (GeoServer is ~244 ms away, so these must not be fetched live). Regenerate after the data or
-the SLD colours change:
-
-```bash
-python apps/dashboard/scripts/build-map-data.py     # needs ssh access to db-primary
-```
 
 ## Documentation
 

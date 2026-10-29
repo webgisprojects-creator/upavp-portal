@@ -1,50 +1,106 @@
 .site-header {
+  position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-shrink: 0;
-  padding: 5px 24px;
-  background: linear-gradient(105deg, #0d659f, #1479bd);
-
-  border-bottom: 4px solid rgb(96, 183, 212);
+  gap: 18px;
+  min-height: 86px;
+  padding: 10px clamp(12px, 2vw, 28px);
+  overflow: hidden;
+  background: #eaf3f8;
+  border-bottom: 1px solid #cbdce8;
 }
 
-.UP-logo {
-  width: 64px;
-  height: 60px;
-  flex-shrink: 0;
+.site-header::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-image: url('../assets/images/master-plan-bg.jpg');
+  background-position: center 44%;
+  background-size: cover;
+  content: '';
+  opacity: 0.9;
+}
+
+.site-header::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: linear-gradient(90deg, rgb(135 188 214 / 90%), rgb(54 211 172 / 68%));
+  content: '';
+}
+
+.site-header__partner-logos {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.site-header__partner-logos img,
+.site-header__logo {
+  display: block;
+  width: 58px;
+  height: 58px;
+  padding: 3px;
+  border: 1px solid rgb(255 255 255 / 85%);
+  border-radius: 50%;
+  background: #fff;
   object-fit: contain;
-  border-radius: 50%;;
-}
-.Avas-logo {
-  flex-shrink: 0;
-  object-fit: contain;
-  width: 241px;
-  height: 66px;
-  background: aliceblue;
-  padding: 0;
-  border: 2px solid deepskyblue;
-  border-radius: 8px;
 }
 
-.site-title {
-  flex: 1;
+.site-header__identity p {
   margin: 0;
-  text-align: center;
- color:#e4e9ec;
-  font-size: clamp(38px, 3vw, 30px);
+}
+
+.site-header__eyebrow {
+  color: #1e6398;
+  font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-header__title {
+  margin-top: 2px !important;
+  color: #123b5a;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.site-header__subtitle {
+  margin-top: 3px !important;
+  color: #657487;
+  font-size: 12px;
 }
 
 @media (max-width: 480px) {
   .site-header {
-    gap: 8px;
-    padding: 10px 12px;
+    min-height: 82px;
+    gap: 12px;
+    padding: 9px 14px;
   }
 
-  .site-logo {
-    width: 45px;
-    height: 45px;
+  .site-header__logo {
+    width: 40px;
+    height: 40px;
+  }
+
+  .site-header__partner-logos {
+    gap: 7px;
+  }
+
+  .site-header__partner-logos img {
+    width: 32px;
+    height: 32px;
+  }
+
+  .site-header__title {
+    font-size: 18px;
+  }
+
+  .site-header__subtitle {
+    font-size: 10px;
   }
 }
