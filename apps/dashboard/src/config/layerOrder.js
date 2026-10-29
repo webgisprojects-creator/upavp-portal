@@ -6,7 +6,9 @@
 //   landuse         filled plot land use (Vrindavan sector 6) -> just above the layout it refines
 //   railway         a line                           -> infrastructure over the areas
 //   cadastral       1 px parcel lines + gata numbers -> fine detail over the areas
+//   sector          green sector outlines + names    -> planning division, under the village line
 //   village         3 px black line + village names  -> administrative boundary
+//   dhara           Dhara 28 (yellow) / Dhara 32 (red) outlines -> statutory boundaries, kept visible over the village line
 //   scheme          3 px red dashed line             -> the project outline: the most important line, never covered
 // Basemap imagery is drawn first; the Esri place-name labels of the "Hybrid" basemap are drawn above the data
 // (they are transparent), because under the opaque LULC they were never visible.
@@ -14,7 +16,7 @@
 
 export const BASEMAP_Z_INDEX = { imagery: 0, labels: 100 }
 
-const DATA_Z_INDEX = { lulc: 10, layout: 10, landuse: 15, railway: 20, cadastral: 30, village: 40, scheme: 50 }
+const DATA_Z_INDEX = { lulc: 10, layout: 10, landuse: 15, railway: 20, cadastral: 30, sector: 35, village: 40, dhara: 45, scheme: 50 }
 const DEFAULT_Z_INDEX = 15
 
 export function layerRole(id) {
@@ -23,6 +25,8 @@ export function layerRole(id) {
   if (id.includes('landuse')) return 'landuse'
   if (id.includes('railway')) return 'railway'
   if (id.includes('cadastral')) return 'cadastral'
+  if (id.includes('sector')) return 'sector' // after 'landuse': the sector 6 land use layer is a filled layer, not an outline
+  if (id.includes('dhara')) return 'dhara'
   if (id.includes('village')) return 'village'
   if (id.includes('scheme')) return 'scheme'
   return 'other'

@@ -527,6 +527,11 @@ function MapContainer({
       if (item.id.includes('scheme')) {
         return [{ id: item.id, name: 'Scheme Boundary', symbol: 'scheme' }]
       }
+      if (item.id === 'dhara-28') return [{ id: item.id, name: 'Dhara 28', symbol: 'dhara28' }]
+      if (item.id === 'dhara-32') return [{ id: item.id, name: 'Dhara 32', symbol: 'dhara32' }]
+      if (item.id.includes('sector') && !item.id.includes('landuse')) {
+        return [{ id: item.id, name: 'Sector Boundary', symbol: 'sector' }]
+      }
       return []
     })
   const statusMessage = !geoserverUrl

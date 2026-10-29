@@ -652,8 +652,23 @@ height: 73vh;
   border-color: #111;
 }
 
+.map-legend__symbol--sector {
+  border-color: #2ee844; /* SLD Merge_sector_boundary */
+}
+
+.map-legend__symbol--dhara28 {
+  border-color: #f1f700; /* SLD dhara_28 */
+}
+
+.map-legend__symbol--dhara32 {
+  border-color: #e41a1c; /* SLD dhara_32 */
+}
+
 .map-legend__symbol--cadastral,
-.map-legend__symbol--village {
+.map-legend__symbol--village,
+.map-legend__symbol--sector,
+.map-legend__symbol--dhara28,
+.map-legend__symbol--dhara32 {
   border-top-style: solid;
 }
 

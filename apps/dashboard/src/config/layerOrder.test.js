@@ -7,8 +7,10 @@ const sikandra = ['sikandra-lulc', 'sikandra-cadastral', 'sikandra-railway', 'si
 const lucknow = [
   'vrindavan-layout',
   'vrindavan-sector6-landuse',
-  'vrindavan-cadastral',
+  'vrindavan-sector-boundary',
   'vrindavan-village-boundary',
+  'dhara-28',
+  'dhara-32',
   'vrindavan-scheme-boundary',
 ]
 
@@ -32,14 +34,28 @@ describe('layer drawing order', () => {
     expect(drawOrder('vrindavan-scheme-boundary')).toBeGreaterThan(drawOrder('vrindavan-layout'))
   })
 
-  it('orders the whole Vrindavan stack: layout < sector 6 land use < cadastral < village < scheme', () => {
-    const order = ['vrindavan-layout', 'vrindavan-sector6-landuse', 'vrindavan-cadastral', 'vrindavan-village-boundary', 'vrindavan-scheme-boundary']
+  it('orders the whole Vrindavan stack: layout < sector 6 land use < sector boundary < village < Dhara < scheme', () => {
+    const order = [
+      'vrindavan-layout',
+      'vrindavan-sector6-landuse',
+      'vrindavan-sector-boundary',
+      'vrindavan-village-boundary',
+      'dhara-28',
+      'vrindavan-scheme-boundary',
+    ]
     expect(topFirst(order.map((id) => ({ id }))).map(({ id }) => id)).toEqual([...order].reverse())
+    expect(drawOrder('dhara-28')).toBe(drawOrder('dhara-32'))
+  })
+
+  it('treats the sector 6 land use as a filled layer and the sector boundary as an outline', () => {
+    expect(layerRole('vrindavan-sector6-landuse')).toBe('landuse')
+    expect(layerRole('vrindavan-sector-boundary')).toBe('sector')
+    expect(hasOpacitySlider('vrindavan-sector-boundary')).toBe(false)
   })
 
   it('offers a transparency slider only for the opaque filled layers', () => {
     expect(['katra-lulc', 'vrindavan-layout', 'vrindavan-sector6-landuse'].every(hasOpacitySlider)).toBe(true)
-    expect(['katra-cadastral', 'katra-village', 'katra-scheme', 'vrindavan-cadastral'].some(hasOpacitySlider)).toBe(false)
+    expect(['katra-cadastral', 'katra-village', 'katra-scheme', 'dhara-28', 'dhara-32'].some(hasOpacitySlider)).toBe(false)
   })
 
   it('keeps all data above the basemap imagery but below the hybrid labels and the highlights', () => {
