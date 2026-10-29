@@ -9,13 +9,14 @@ import VectorSource from 'ol/source/Vector.js'
 import Overlay from 'ol/Overlay.js'
 import { unByKey } from 'ol/Observable.js'
 import { fromLonLat } from 'ol/proj.js'
+import { createEmpty, extend, isEmpty } from 'ol/extent.js'
 import GeoJSON from 'ol/format/GeoJSON.js'
 import VectorLayer from 'ol/layer/Vector.js'
 import Fill from 'ol/style/Fill.js'
 import Stroke from 'ol/style/Stroke.js'
 import Style from 'ol/style/Style.js'
 import { LAYOUT_FIELDS } from '../config/layoutFields.js'
-import { BASEMAP_Z_INDEX, drawOrder, topFirst } from '../config/layerOrder.js'
+import { BASEMAP_Z_INDEX, drawOrder, hasOpacitySlider, topFirst } from '../config/layerOrder.js'
 import MapInfoControl from './MapInfoControl.jsx'
 import 'ol/ol.css'
 
@@ -102,6 +103,31 @@ function createBaseLayers() {
   }
 }
 
+// Geometry of one chart category, for the yellow highlight. Only the geometry column is requested (the highlight needs no
+// attributes) and in EPSG:4326 so GeoServer does not have to reproject; the browser reprojects.
+async function fetchCategoryGeometry(layer, cqlFilter, signal) {
+  const base = {
+    service: 'WFS',
+    version: '1.1.0',
+    request: 'GetFeature',
+    typeName: layer,
+    outputFormat: 'application/json',
+    srsName: 'EPSG:4326',
+    CQL_FILTER: cqlFilter,
+    maxFeatures: '100000',
+  }
+  let status = 0
+  for (const extra of [{ propertyName: 'geom' }, {}]) {
+    const response = await fetch(`${geoserverWfsUrl}?${new URLSearchParams({ ...base, ...extra })}`, { signal })
+    status = response.status
+    if (response.ok) {
+      const data = JSON.parse(await response.text())
+      if (Array.isArray(data.features)) return data
+    }
+  }
+  throw new Error(`GeoServer returned HTTP ${status}.`)
+}
+
 function MapContainer({
   basemap,
   city,
@@ -112,6 +138,9 @@ function MapContainer({
   propertyStatusEnabled,
   onMapReady,
   onZoomChange,
+  onSelectionLoadingChange,
+  layerFilters,
+  focusRequest,
 }) {
   const targetRef = useRef(null)
   const popupRef = useRef(null)
@@ -126,11 +155,18 @@ function MapContainer({
   const [mapInstance, setMapInstance] = useState(null)
   const [failedLayers, setFailedLayers] = useState({})
   const [selectionError, setSelectionError] = useState('')
+  const [selectionLoading, setSelectionLoading] = useState(false)
+  const initialCityRef = useRef(city) // the map opens on the remembered city (no flash of another city after a refresh)
+  const highlightCacheRef = useRef(new Map()) // category geometry already downloaded: selecting it again is instant
   const [popup, setPopup] = useState(null)
 
   useEffect(() => {
     layerConfigRef.current = { layers, visibleLayers }
   }, [layers, visibleLayers])
+
+  useEffect(() => {
+    onSelectionLoadingChange?.(selectionLoading)
+  }, [onSelectionLoadingChange, selectionLoading])
 
   useEffect(() => {
     highlightSourceRef.current?.clear()
@@ -152,8 +188,8 @@ function MapContainer({
         baseLayers.hybridLabels,
       ],
       view: new View({
-        center: fromLonLat(cityCenters.katra.center),
-        zoom: cityCenters.katra.zoom,
+        center: fromLonLat((cityCenters[initialCityRef.current] ?? cityCenters.katra).center),
+        zoom: (cityCenters[initialCityRef.current] ?? cityCenters.katra).zoom,
       }),
     })
     const highlightSource = new VectorSource()
@@ -364,18 +400,19 @@ function MapContainer({
       // labels whenever the opacity slider moved. updateParams() reloads the image, so only call it for a real change.
       const source = layer.getSource()
       const current = source.getParams()
-      if (current.CQL_FILTER !== undefined || current.SLD_BODY !== undefined) {
+      const wantedFilter = layerFilters?.[item.id] ?? '' // scheme / sector selection (see App.jsx); '' = no filter
+      if ((current.CQL_FILTER ?? '') !== wantedFilter || current.SLD_BODY !== undefined) {
         const params = { ...current }
-        delete params.CQL_FILTER
+        if (wantedFilter) params.CQL_FILTER = wantedFilter
+        else delete params.CQL_FILTER
         delete params.SLD_BODY
         source.updateParams(params)
       }
-      const supportsTransparency =
-        item.id.includes('lulc') || item.id === 'vrindavan-layout'
+      const supportsTransparency = hasOpacitySlider(item.id)
       const transparency = supportsTransparency ? layerTransparency[item.id] ?? 0 : 0
       layer.setOpacity(1 - transparency / 100)
     })
-  }, [layers, visibleLayers, layerTransparency])
+  }, [layers, visibleLayers, layerTransparency, layerFilters])
 
   useEffect(() => {
     if (!mapInstance) return undefined
@@ -408,6 +445,7 @@ function MapContainer({
     const source = categoryHighlightSourceRef.current
     source?.clear()
     setSelectionError('')
+    setSelectionLoading(false)
     if (!source || !mapInstance || !selectedLulcCategory) return undefined
 
     const selectedLayer =
@@ -424,6 +462,8 @@ function MapContainer({
           ? `(${categoryProperty} IS NULL OR ${categoryProperty}='' OR ${categoryProperty} NOT IN ('Alloted','Vacant'))`
           : `${categoryProperty}='${selectedLulcCategory.className.replaceAll("'", "''")}'`
     const clauses = [categoryClause]
+    const scopeFilter = layerFilters?.[selectedLayer.id] // the chart only counts the checked schemes / chosen sector
+    if (scopeFilter) clauses.push(`(${scopeFilter})`)
     if (selectedLulcCategory.subClassName && selectedLulcCategory.subClassProperty) {
       const property = selectedLulcCategory.subClassProperty
       if (selectedLulcCategory.subClassName === 'Unspecified') {
@@ -438,36 +478,28 @@ function MapContainer({
     const controller = new AbortController()
     async function loadCategoryFeatures() {
       try {
-        const params = new URLSearchParams({
-          service: 'WFS',
-          version: '1.1.0',
-          request: 'GetFeature',
-          typeName: selectedLayer.layer,
-          outputFormat: 'application/json',
-          srsName: mapInstance.getView().getProjection().getCode(),
-          CQL_FILTER: clauses.join(' AND '),
-          maxFeatures: '100000',
-        })
-        const response = await fetch(`${geoserverWfsUrl}?${params}`, {
-          signal: controller.signal,
-        })
-        const responseText = await response.text()
-        if (!response.ok) {
-          throw new Error(`GeoServer returned HTTP ${response.status}.`)
-        }
-
-        const data = JSON.parse(responseText)
-        if (!Array.isArray(data.features)) {
-          throw new Error('GeoServer did not return selected LULC features.')
+        const cqlFilter = clauses.join(' AND ')
+        const cacheKey = `${selectedLayer.layer}|${cqlFilter}`
+        let data = highlightCacheRef.current.get(cacheKey)
+        if (!data) {
+          setSelectionLoading(true)
+          data = await fetchCategoryGeometry(selectedLayer.layer, cqlFilter, controller.signal)
+          highlightCacheRef.current.set(cacheKey, data)
         }
         const features = new GeoJSON().readFeatures(data, {
+          dataProjection: 'EPSG:4326',
           featureProjection: mapInstance.getView().getProjection(),
         })
         source.addFeatures(features)
         if (features.length) {
+          // The Vrindavan chart changes its categories at zoom 16: do not let the zoom-to-selection cross that level and
+          // clear the selection it has just made.
+          const zoomStyled = layers.some((item) => item.zoomStyle && item.layer === selectedLayer.layer)
+          const zoomNow = mapInstance.getView().getZoom() ?? 0
+          const maxZoom = zoomStyled ? (zoomNow >= 16 ? 19 : 15.9) : 17
           mapInstance.getView().fit(source.getExtent(), {
             padding: [70, 70, 70, 70],
-            maxZoom: 17,
+            maxZoom,
             duration: 600,
           })
         }
@@ -476,6 +508,8 @@ function MapContainer({
         setSelectionError(
           error instanceof Error ? error.message : 'Unable to highlight selected LULC features.',
         )
+      } finally {
+        if (!controller.signal.aborted) setSelectionLoading(false)
       }
     }
 
@@ -484,7 +518,46 @@ function MapContainer({
       controller.abort()
       source.clear()
     }
-  }, [city, layers, mapInstance, selectedLulcCategory, visibleLayers])
+  }, [city, layers, layerFilters, mapInstance, selectedLulcCategory, visibleLayers])
+
+  // Zoom to a scheme / sector selection: try each target in turn (e.g. the sector boundary, then the plots) until one has a shape.
+  useEffect(() => {
+    if (!mapInstance || !focusRequest) return undefined
+    const controller = new AbortController()
+    async function zoomToSelection() {
+      try {
+        for (const { layer, cql } of focusRequest.targets) {
+          const cacheKey = `${layer}|${cql}`
+          let data = highlightCacheRef.current.get(cacheKey)
+          if (!data) {
+            data = await fetchCategoryGeometry(layer, cql, controller.signal)
+            highlightCacheRef.current.set(cacheKey, data)
+          }
+          const extent = createEmpty()
+          new GeoJSON()
+            .readFeatures(data, { dataProjection: 'EPSG:4326', featureProjection: mapInstance.getView().getProjection() })
+            .forEach((feature) => {
+              const geometry = feature.getGeometry()
+              if (geometry) extend(extent, geometry.getExtent())
+            })
+          if (!isEmpty(extent) && extent.every(Number.isFinite)) {
+            mapInstance.getView().fit(extent, { padding: [60, 60, 60, 60], maxZoom: 17, duration: 600 })
+            return
+          }
+        }
+        if (focusRequest.reset) {
+          const home = cityCenters[city] ?? cityCenters.katra
+          mapInstance.getView().animate({ center: fromLonLat(home.center), zoom: home.zoom, duration: 600 })
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) console.warn('Could not zoom to the selection:', error)
+      }
+    }
+    zoomToSelection()
+    return () => controller.abort()
+    // city is read only when a reset is requested; the request itself is what triggers this
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest, mapInstance])
 
   const activeFailedLayers = layers
     .filter(({ id }) => visibleLayers[id] && failedLayers[id])
@@ -501,15 +574,13 @@ function MapContainer({
       if (item.id.includes('scheme')) {
         return [{ id: item.id, name: 'Scheme Boundary', symbol: 'scheme' }]
       }
+      if (item.id === 'dhara-28') return [{ id: item.id, name: 'Dhara 28', symbol: 'dhara28' }]
+      if (item.id === 'dhara-32') return [{ id: item.id, name: 'Dhara 32', symbol: 'dhara32' }]
+      if (item.id.includes('sector') && !item.id.includes('landuse')) {
+        return [{ id: item.id, name: 'Sector Boundary', symbol: 'sector' }]
+      }
       return []
     })
-  if (city === 'lucknow' && visibleLayers['vrindavan-scheme-boundary']) {
-    mapLegendItems.push({
-      id: 'vrindavan-village-boundary-legend',
-      name: 'Village Boundary',
-      symbol: 'village',
-    })
-  }
   const statusMessage = !geoserverUrl
     ? 'GeoServer is not configured. Add VITE_GEOSERVER_WMS_URL to .env.local, then restart Vite.'
     : activeFailedLayers.length
@@ -605,6 +676,12 @@ function MapContainer({
         <div className="map-container__status" role="status">
           <strong>GeoServer connection</strong>
           <span>{statusMessage}</span>
+        </div>
+      )}
+      {selectionLoading && (
+        <div className="map-container__busy" role="status">
+          <span className="map-container__spinner" aria-hidden="true" />
+          Highlighting {selectedLulcCategory?.className ?? 'selection'} on the map…
         </div>
       )}
       {selectionError && (

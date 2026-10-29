@@ -232,21 +232,96 @@ height: 73vh;
   display: block;
   width: 100%;
   height: 100%;
-  transform: rotate(-90deg);
-}
-
-.lulc-chart__donut-track,
-.lulc-chart__donut-segment {
-  fill: none;
-  stroke-width: 20;
+  overflow: visible;
 }
 
 .lulc-chart__donut-track {
+  fill: none;
   stroke: #edf1f5;
+  stroke-width: 24;
 }
 
-.lulc-chart__donut-segment {
-  stroke-linecap: butt;
+/* one wedge per class: hover lifts it, the selected one pops out, the others fade */
+.lulc-chart__slice {
+  cursor: pointer;
+  stroke: #fff;
+  stroke-width: 1;
+  transform-box: view-box;
+  transform-origin: 90px 90px;
+  transition: transform 140ms ease, opacity 140ms ease, filter 140ms ease;
+}
+
+.lulc-chart__slice.is-active {
+  transform: scale(1.04);
+  filter: brightness(1.08) drop-shadow(0 1px 2px rgb(0 0 0 / 28%));
+}
+
+.lulc-chart__slice.is-selected {
+  transform: scale(1.07);
+  filter: drop-shadow(0 2px 4px rgb(0 0 0 / 35%));
+}
+
+.lulc-chart__slice.is-dimmed:not(.is-active) {
+  opacity: 0.3;
+}
+
+.lulc-chart__slice:focus {
+  outline: none;
+}
+
+.lulc-chart__slice:focus-visible {
+  stroke: #2274a5;
+  stroke-width: 3;
+}
+
+.lulc-chart__donut-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: #233d56;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lulc-chart__busy,
+.map-container__busy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: #1c5f8a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.map-container__busy {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 20px;
+  background: rgb(255 255 255 / 95%);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 22%);
+}
+
+.lulc-chart__spinner,
+.map-container__spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #b9d6e8;
+  border-top-color: #1c78b3;
+  border-radius: 50%;
+  animation: chart-spin 700ms linear infinite;
+}
+
+@keyframes chart-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .lulc-chart__donut-label {
@@ -310,8 +385,7 @@ height: 73vh;
   background: #edf4fa;
 }
 
-.lulc-chart__row:focus-visible,
-.lulc-chart__donut-segment:focus-visible {
+.lulc-chart__row:focus-visible {
   outline: 2px solid #2274a5;
   outline-offset: 2px;
 }
@@ -522,7 +596,7 @@ height: 73vh;
 
 .map-container--selection-focus .lulc-background-layer,
 .map-container--selection-focus .planning-layout-background-layer {
-  filter: blur(2px);
+  filter: saturate(0.25) brightness(1.06);
   transition: filter 200ms ease;
 }
 
@@ -578,8 +652,23 @@ height: 73vh;
   border-color: #111;
 }
 
+.map-legend__symbol--sector {
+  border-color: #2ee844; /* SLD Merge_sector_boundary */
+}
+
+.map-legend__symbol--dhara28 {
+  border-color: #f1f700; /* SLD dhara_28 */
+}
+
+.map-legend__symbol--dhara32 {
+  border-color: #e41a1c; /* SLD dhara_32 */
+}
+
 .map-legend__symbol--cadastral,
-.map-legend__symbol--village {
+.map-legend__symbol--village,
+.map-legend__symbol--sector,
+.map-legend__symbol--dhara28,
+.map-legend__symbol--dhara32 {
   border-top-style: solid;
 }
 
@@ -863,3 +952,78 @@ height: 73vh;
 
 
 
+
+/* ---- scheme (yojana) / sector selection under the plot layout ---- */
+.layer-panel__scope {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 4px 6px;
+  padding: 8px 8px 8px 10px;
+  border-left: 3px solid #b9d6e8;
+  background: #f4f9fc;
+  border-radius: 0 6px 6px 0;
+}
+
+.layer-panel__scope-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #46586a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.layer-panel__scope-head button {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #1c78b3;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.layer-panel__scope-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  color: #3d4f61;
+  font-size: 11px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.layer-panel__scope-row small {
+  color: #7a8a99;
+  font-variant-numeric: tabular-nums;
+}
+
+.layer-panel__scope-sector {
+  display: grid;
+  gap: 3px;
+  margin-top: 6px;
+  color: #46586a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.layer-panel__scope-sector select {
+  padding: 4px 6px;
+  border: 1px solid #c8d6e2;
+  border-radius: 4px;
+  background: #fff;
+  color: #233d56;
+  font-size: 11px;
+}
+
+.layer-panel__scope-message {
+  margin: 6px 0 4px 6px;
+  color: #718093;
+  font-size: 11px;
+}
+
+.layer-panel__scope-message--error {
+  color: #b3261e;
+}
