@@ -58,19 +58,19 @@ const cityLayers = {
     { id: 'unnao-scheme', name: 'Scheme boundary', layer: 'Landuse_LULC:scheme_boundary_unnao' },
     { id: 'unnao-village', name: 'Village boundary', layer: 'Landuse_LULC:village_boundary_unnao' },
   ],
-  // Lucknow / Vrindavan "Land Acquisition layers" (workspace Planning): the village cadastral (the 9,137 parcels of "vrindavan merge
-  // layer"), the village boundary (5 filled village polygons - drawn at the bottom, under the plots) and the two statutory outlines
+  // Lucknow / Vrindavan "Land Acquisition layers" (workspace Planning): the village cadastral (the 9,137 parcels of "vrindavan_cadastral"
+  // table), the village boundary (5 filled village polygons - drawn at the bottom, under the plots) and the two statutory outlines
   // Dhara 28 / Dhara 32.
   lucknow: [
     {
       id: 'vrindavan-village-cadastral',
       name: 'Village Cadastral',
-      layer: 'Planning:vrindavan merge layer',
+      layer: 'Planning:vrindavan_cadastral',
     },
     {
       id: 'vrindavan-village-boundary',
       name: 'Village Boundary',
-      layer: 'Planning:vrindavan village boundary',
+      layer: 'Planning:vrindavan_village_boundary',
     },
     { id: 'dhara-28', name: 'Dhara 28 Layer', layer: 'Planning:dhara28' },
     { id: 'dhara-32', name: 'Dhara 32 Layer', layer: 'Planning:dhara32' },
@@ -94,11 +94,11 @@ const planningLayers = [
   {
     id: 'vrindavan-sector6-landuse',
     name: 'Vrindavan Sector 6 Land Use',
-    layer: 'Planning:vrindavan sector 6 landuse',
+    layer: 'Planning:vrindavan_sector_6_landuse',
     defaultVisible: false,
   },
-  { id: 'vrindavan-scheme-boundary', name: 'Vrindavan Scheme Boundary', layer: 'Planning:vrindavan scheme boundary' },
-  { id: 'vrindavan-sector-boundary', name: 'Vrindavan Sector Boundary', layer: 'Planning:sector boundary' },
+  { id: 'vrindavan-scheme-boundary', name: 'Vrindavan Scheme Boundary', layer: 'Planning:vrindavan_scheme_boundary' },
+  { id: 'vrindavan-sector-boundary', name: 'Vrindavan Sector Boundary', layer: 'Planning:sector_boundary' },
 ]
 
 const planningDefaults = () =>
@@ -111,8 +111,8 @@ const defaultVisibility = (city) =>
 // with several schemes adds its entry here (and its names to lib/vrindavan.js-style matching).
 const LAYOUT_SCOPE_CITIES = ['lucknow']
 const LAYOUT_LAYER = 'Planning:vrindavan_layout'
-const SCHEME_BOUNDARY_LAYER = 'Planning:vrindavan scheme boundary'
-const SECTOR_BOUNDARY_LAYER = 'Planning:sector boundary'
+const SCHEME_BOUNDARY_LAYER = 'Planning:vrindavan_scheme_boundary'
+const SECTOR_BOUNDARY_LAYER = 'Planning:sector_boundary'
 
 function App() {
   const [basemap, setBasemap] = useState('hybrid')

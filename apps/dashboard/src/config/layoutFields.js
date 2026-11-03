@@ -13,8 +13,8 @@ export const LAYOUT_FIELDS = {
 
 // Name fields of the two BOUNDARY layers (other tables than the layout, so they are not in LAYOUT_FIELDS).
 export const BOUNDARY_FIELDS = {
-  scheme: 'yojana_num', // Planning:vrindavan scheme boundary (lucknow."vrindavan scheme boundary")
-  sector: 'sector_no_', // Planning:sector boundary ("Sector 1" ... "Sector 20")
+  scheme: 'yojana_num', // Planning:vrindavan_scheme_boundary (lucknow.vrindavan_scheme_boundary)
+  sector: 'sector_no_', // Planning:sector_boundary ("Sector 1" ... "Sector 20")
 }
 
 // Scheme and sector columns are looked up in the layer's published schema (DescribeFeatureType) because the
