@@ -17,6 +17,6 @@
   "devDependencies": {
     "vite": "^7.1.0",
     "vitest": "^3.2.4",
-    "oxlint": "^1.81.0"
+    "oxlint": "^1.90.0"
   }
 }
