@@ -18,6 +18,7 @@ import Style from 'ol/style/Style.js'
 import { LAYOUT_FIELDS } from '../config/layoutFields.js'
 import { BASEMAP_Z_INDEX, drawOrder, hasOpacitySlider, topFirst } from '../config/layerOrder.js'
 import MapInfoControl from './MapInfoControl.jsx'
+import { retryingImageLoader } from '../lib/imageRetry.js'
 import 'ol/ol.css'
 
 const geoserverUrl =
@@ -369,6 +370,8 @@ function MapContainer({
           ratio: 1,
           serverType: 'geoserver',
           crossOrigin: 'anonymous',
+          // a dropped / timed-out request is retried twice before the red "failed to load" banner is shown (lib/imageRetry.js)
+          imageLoadFunction: retryingImageLoader,
         })
         layer = new ImageLayer({
           source,
