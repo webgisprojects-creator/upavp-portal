@@ -48,6 +48,22 @@ ssh pre-prod 'df -h / | tail -1; du -sh /var/cache/nginx/upavp_tiles; systemctl 
 | pgAdmin: "database postgres does not exist" | wrong maintenance DB | use `upavp_geo` as Maintenance database |
 | Login says sign-in is not configured | `VITE_DEMO_USERS` missing at build time | set the secret (CI) or `.env.production.local` (laptop) and redeploy |
 
+## Dedicated GeoServer (primary since the cut-over PR)
+
+The portal's `/geoserver/` now goes to the DEDICATED GeoServer on db-primary (27.100.38.132:8081, next to the database, no other users).
+The shared GeoServer (162.245.218.6:8080) stays configured as nginx's `backup` upstream and is used automatically only while the dedicated one fails.
+
+Why: on 12 Nov 2026 the shared GeoServer was handling ~2,500-3,000 requests/min for another portal (via 27.100.38.133); our map got HTTP 504 and the
+red "failed to load" banner. The same 1331x975 Vrindavan view takes 0.3-0.5 s on the dedicated server and 4.5 s on the shared one.
+
+After the PR is merged and CD has deployed it:
+1. Check one small image through the portal: `curl -s -o /dev/null -w '%{http_code} %{content_type}\n' 'http://27.100.38.131:8070/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image/png&LAYERS=Planning:vrindavan_layout&STYLES=&WIDTH=64&HEIGHT=64&SRS=EPSG:3857&BBOX=9012015,3093779,9013415,3095179'`
+2. Mark the cut-over so the sync script can never overwrite layers published on the dedicated server: `ssh db-primary 'sudo touch /var/lib/geoserver-upavp/CUTOVER_DONE'`
+3. From now on publish layers and edit styles on the DEDICATED GeoServer (it listens on 127.0.0.1 and the portal servers only; use an SSH tunnel: `ssh -L 8081:127.0.0.1:8081 db-primary`, then http://localhost:8081/geoserver/web/; admin password: `/root/upavp_geo_setup/geoserver_admin.txt` on db-primary, root only). Changes made on the shared GeoServer no longer reach the portal.
+4. Roll back = revert the PR (nginx points at the shared GeoServer again).
+
+Before the cut-over, `infra/geoserver-local/sync-config.sh` copies the UPAVP workspaces from the shared to the dedicated server (it refuses to run once the marker exists).
+
 ## Contacts and access
 
 Keep this table filled in (do **not** put passwords here):
