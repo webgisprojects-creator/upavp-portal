@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => {
     server: {
       // Same-origin /geoserver/* like production (nginx proxies it there), so the browser needs no CORS.
       proxy: {
+        // The search/chart API (apps/server). Start it with `npm run dev:server`.
+        "/api": { target: env.VITE_DEV_API_TARGET?.trim() || "http://127.0.0.1:3001", changeOrigin: true },
         "/geoserver": {
           target: geoserverTarget,
           changeOrigin: true,

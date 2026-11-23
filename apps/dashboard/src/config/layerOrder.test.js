@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BASEMAP_Z_INDEX, drawOrder, hasOpacitySlider, layerRole, topFirst } from './layerOrder.js'
+import { BASEMAP_Z_INDEX, drawOrder, hasMapLegend, hasOpacitySlider, layerRole, topFirst } from './layerOrder.js'
 
 // ids exactly as App.jsx defines them
 const katra = ['katra-lulc', 'katra-cadastral', 'katra-scheme', 'katra-village']
@@ -65,6 +65,18 @@ describe('layer drawing order', () => {
   it('offers a transparency slider only for the opaque filled layers', () => {
     expect(['katra-lulc', 'vrindavan-layout', 'vrindavan-sector6-landuse', 'vrindavan-village-boundary'].every(hasOpacitySlider)).toBe(true)
     expect(['katra-cadastral', 'katra-village', 'katra-scheme', 'dhara-28', 'dhara-32', 'vrindavan-village-cadastral'].some(hasOpacitySlider)).toBe(false)
+  })
+
+  it('limits the map legend to the boundary and cadastral layers shown in the reference', () => {
+    expect([
+      'vrindavan-scheme-boundary',
+      'dhara-28',
+      'dhara-32',
+      'vrindavan-sector-boundary',
+      'vrindavan-village-cadastral',
+      'vrindavan-village-boundary',
+    ].every(hasMapLegend)).toBe(true)
+    expect(['vrindavan-layout', 'vrindavan-sector6-landuse', 'katra-lulc', 'sikandra-railway'].some(hasMapLegend)).toBe(false)
   })
 
   it('keeps all data above the basemap imagery but below the hybrid labels and the highlights', () => {

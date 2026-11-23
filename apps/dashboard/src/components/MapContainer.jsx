@@ -6,7 +6,6 @@ import ImageLayer from 'ol/layer/Image.js'
 import XYZ from 'ol/source/XYZ.js'
 import ImageWMS from 'ol/source/ImageWMS.js'
 import VectorSource from 'ol/source/Vector.js'
-import Overlay from 'ol/Overlay.js'
 import { unByKey } from 'ol/Observable.js'
 import { fromLonLat } from 'ol/proj.js'
 import { createEmpty, extend, isEmpty } from 'ol/extent.js'
@@ -16,8 +15,10 @@ import Fill from 'ol/style/Fill.js'
 import Stroke from 'ol/style/Stroke.js'
 import Style from 'ol/style/Style.js'
 import { LAYOUT_FIELDS } from '../config/layoutFields.js'
-import { BASEMAP_Z_INDEX, drawOrder, hasOpacitySlider, topFirst } from '../config/layerOrder.js'
+import { BASEMAP_Z_INDEX, drawOrder, hasMapLegend, hasOpacitySlider, topFirst } from '../config/layerOrder.js'
+import { getLegendGraphicUrl } from '../lib/legendGraphic.js'
 import MapInfoControl from './MapInfoControl.jsx'
+import MapPopup from './MapPopup.jsx'
 import { retryingImageLoader } from '../lib/imageRetry.js'
 import 'ol/ol.css'
 
@@ -41,27 +42,6 @@ const imageryUrl =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 const referenceUrl =
   'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
-
-const propertyLabels = {
-  shape_area: 'Area',
-  village_na: 'Village Name',
-  scheme_na: 'Scheme Name',
-  area_in_ac: 'Area (acre)',
-  area_in_ha: 'Area (hectare)',
-  area_in_hec: 'Area (hectare)',
-   vill_name: 'Village Name',
-    yojana_num: 'Yojana Number',
-}
-
-function getPropertyLabel(key) {
-  return (
-    propertyLabels[key.toLowerCase()] ??
-    key
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-  )
-}
 
 function createBaseLayers() {
   return {
@@ -144,7 +124,6 @@ function MapContainer({
   focusRequest,
 }) {
   const targetRef = useRef(null)
-  const popupRef = useRef(null)
   const mapRef = useRef(null)
   const baseLayersRef = useRef(null)
   const wmsLayersRef = useRef({})
@@ -152,7 +131,6 @@ function MapContainer({
   const categoryHighlightSourceRef = useRef(null)
   const layerConfigRef = useRef({ layers, visibleLayers })
   const identifyRequestRef = useRef(0)
-  const overlayRef = useRef(null)
   const [mapInstance, setMapInstance] = useState(null)
   const [failedLayers, setFailedLayers] = useState({})
   const [selectionError, setSelectionError] = useState('')
@@ -176,8 +154,7 @@ function MapContainer({
 
   useEffect(() => {
     const mapTarget = targetRef.current
-    const popupElement = popupRef.current
-    if (!mapTarget || !popupElement) return undefined
+    if (!mapTarget) return undefined
 
     const baseLayers = createBaseLayers()
     const map = new Map({
@@ -216,30 +193,18 @@ function MapContainer({
     categoryHighlightLayer.setZIndex(900)
     map.addLayer(categoryHighlightLayer)
 
-    const popupOverlay = new Overlay({
-      element: popupElement,
-      positioning: 'bottom-center',
-      offset: [0, -14],
-      stopEvent: true,
-      autoPan: { animation: { duration: 200 } },
-    })
-    map.addOverlay(popupOverlay)
-
     mapRef.current = map
     setMapInstance(map)
     onMapReady(map)
     baseLayersRef.current = baseLayers
     highlightSourceRef.current = highlightSource
     categoryHighlightSourceRef.current = categoryHighlightSource
-    overlayRef.current = popupOverlay
-
     const clickKey = map.on('singleclick', async (event) => {
       if (map.get('measurementMode')) return
 
       const requestId = identifyRequestRef.current + 1
       identifyRequestRef.current = requestId
       highlightSource.clear()
-      popupOverlay.setPosition(event.coordinate)
       setPopup({ loading: true, features: [], error: '' })
 
       const { layers: currentLayers, visibleLayers: currentVisibility } = layerConfigRef.current
@@ -321,7 +286,6 @@ function MapContainer({
       baseLayersRef.current = null
       highlightSourceRef.current = null
       categoryHighlightSourceRef.current = null
-      overlayRef.current = null
       wmsLayersRef.current = {}
     }
   }, [onMapReady])
@@ -565,31 +529,22 @@ function MapContainer({
   const activeFailedLayers = layers
     .filter(({ id }) => visibleLayers[id] && failedLayers[id])
     .map(({ id }) => failedLayers[id])
+    
+  const legendZoom = mapInstance?.getView().getZoom() ?? 0
   const mapLegendItems = topFirst(layers)
-    .filter(({ id }) => visibleLayers[id])
-    .flatMap((item) => {
-      // Lucknow: the cadastral layer is drawn with the black village style, the village boundary is a filled layer
-      if (item.id === 'vrindavan-village-cadastral') {
-        return [{ id: item.id, name: 'Village Cadastral', symbol: 'village' }]
+    .filter(({ id }) => visibleLayers[id] && hasMapLegend(id))
+    .map((item) => {
+      const style = item.zoomStyle
+        ? propertyStatusEnabled
+          ? item.zoomStyle.statusStyle
+          : legendZoom >= item.zoomStyle.threshold
+            ? item.zoomStyle.style
+            : ''
+        : ''
+      return {
+        ...item,
+        legendUrl: getLegendGraphicUrl(geoserverUrl, item.layer, style),
       }
-      if (item.id === 'vrindavan-village-boundary') {
-        return [{ id: item.id, name: 'Village Boundary', symbol: 'villagearea' }]
-      }
-      if (item.id.includes('cadastral')) {
-        return [{ id: item.id, name: 'Cadastral', symbol: 'cadastral' }]
-      }
-      if (item.id.includes('village')) {
-        return [{ id: item.id, name: 'Village Boundary', symbol: 'village' }]
-      }
-      if (item.id.includes('scheme')) {
-        return [{ id: item.id, name: 'Scheme Boundary', symbol: 'scheme' }]
-      }
-      if (item.id === 'dhara-28') return [{ id: item.id, name: 'Dhara 28', symbol: 'dhara28' }]
-      if (item.id === 'dhara-32') return [{ id: item.id, name: 'Dhara 32', symbol: 'dhara32' }]
-      if (item.id.includes('sector') && !item.id.includes('landuse')) {
-        return [{ id: item.id, name: 'Sector Boundary', symbol: 'sector' }]
-      }
-      return []
     })
   const statusMessage = !geoserverUrl
     ? 'GeoServer is not configured. Add VITE_GEOSERVER_WMS_URL to .env.local, then restart Vite.'
@@ -599,7 +554,6 @@ function MapContainer({
 
   function closePopup() {
     identifyRequestRef.current += 1
-    overlayRef.current?.setPosition(undefined)
     highlightSourceRef.current?.clear()
     setPopup(null)
   }
@@ -613,75 +567,16 @@ function MapContainer({
       {mapLegendItems.length > 0 && (
         <div className="map-legend" aria-label="Map legend">
           <strong>Legend</strong>
-          {mapLegendItems.map(({ id, name, symbol }) => (
+          {mapLegendItems.map(({ id, name, legendUrl }) => (
             <div className="map-legend__item" key={id}>
-              <span
-                className={`map-legend__symbol map-legend__symbol--${symbol}`}
-                aria-hidden="true"
-              />
+              <img src={legendUrl} alt="" aria-hidden="true" />
               <span>{name}</span>
             </div>
           ))}
         </div>
       )}
       <MapInfoControl map={mapInstance} />
-      <div
-        className="map-popup"
-        ref={popupRef}
-        role="dialog"
-        aria-label="Map feature information"
-        style={{ display: popup ? 'block' : 'none' }}
-      >
-        {popup && (
-          <>
-            <div className="map-popup__header">
-              <strong>Feature information</strong>
-              <button
-                className="map-popup__close"
-                type="button"
-                aria-label="Close popup"
-                onClick={closePopup}
-              >
-                ×
-              </button>
-            </div>
-            <div className="map-popup__body" aria-live="polite">
-              {popup.loading && <p className="map-popup__message">Loading feature details…</p>}
-              {!popup.loading && popup.error && (
-                <p className="map-popup__message map-popup__message--error">{popup.error}</p>
-              )}
-              {!popup.loading && !popup.error && popup.features.length === 0 && (
-                <p className="map-popup__message">No features found at this location.</p>
-              )}
-              {!popup.loading &&
-                !popup.error &&
-                popup.features.map((feature, index) => {
-                  const properties = Object.entries(feature.properties).filter(
-                    ([key]) => !['geometry', 'id', 'remarks'].includes(key.toLowerCase()),
-                  )
-
-                  return (
-                    <section className="map-popup__feature" key={`${feature.layerName}-${index}`}>
-                      <h3>{feature.layerName}</h3>
-                      {properties.length ? (
-                        <dl>
-                          {properties.map(([key, value]) => (
-                            <div className="map-popup__property" key={key}>
-                              <dt>{getPropertyLabel(key)}</dt>
-                              <dd>{value == null || value === '' ? '—' : String(value)}</dd>
-                            </div>
-                          ))}
-                        </dl>
-                      ) : (
-                        <p className="map-popup__message">No attributes are available.</p>
-                      )}
-                    </section>
-                  )
-                })}
-            </div>
-          </>
-        )}
-      </div>
+      <MapPopup popup={popup} onClose={closePopup} />
       {statusMessage && (
         <div className="map-container__status" role="status">
           <strong>GeoServer connection</strong>

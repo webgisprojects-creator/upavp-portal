@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { buildLayoutChartClasses } from '../lib/layoutChart.js'
 import GeoJSON from 'ol/format/GeoJSON.js'
 import { getArea } from 'ol/sphere.js'
 import { LAYOUT_FIELDS, findSchemeField, normalizeFieldName } from '../config/layoutFields.js'
@@ -10,6 +11,8 @@ const geoserverWfsUrl = geoserverWmsUrl.replace(/\/wms(?=\?|$)/i, '/wfs')
 // Finished chart data, kept for the session: going back to a city (or re-opening a layer) is instant instead of a new download.
 const CHART_CACHE_TTL_MS = 10 * 60 * 1000
 const chartCache = new Map()
+const layoutSummaryCache = new Map()
+const apiBaseUrl = (import.meta.env.VITE_API_URL?.trim() || '/api').replace(/\/$/, '')
 
 const cityNames = {
   katra: 'Katra, Pratapgarh',
@@ -132,6 +135,7 @@ function LulcChart({
   onCategorySelect,
   highlightLoading = false,
   cqlFilter = '',
+  layoutChartScope = null,
 }) {
   const [hovered, setHovered] = useState(null)
   const dataLabel = categoryProperty === 'class' ? 'LULC' : 'layout'
@@ -142,7 +146,8 @@ function LulcChart({
     subclassProperty: '',
     error: '',
   })
-  const requestKey = `${city}:${layer ?? ''}:${categoryProperty}:${cqlFilter}`
+  const scopeKey = JSON.stringify(layoutChartScope)
+  const requestKey = `${city}:${layer ?? ''}:${categoryProperty}:${cqlFilter}:${scopeKey}`
 
   useEffect(() => {
     if (!layer) return undefined
@@ -155,6 +160,29 @@ function LulcChart({
         return
       }
       try {
+        if (layer === 'Planning:vrindavan_layout' && ['scheme', 'property_t', 'status'].includes(categoryProperty)) {
+          let summary = layoutSummaryCache.get(layer)
+          if (!summary || Date.now() - summary.at >= CHART_CACHE_TTL_MS) {
+            const response = await fetch(`${apiBaseUrl}/layout/chart-data`, {
+              signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30000)]),
+            })
+            const text = await response.text()
+            let data
+            try { data = JSON.parse(text) } catch {
+              throw new Error('Chart API returned an invalid response. Restart the backend with the chart-data route.')
+            }
+            if (!response.ok) throw new Error(data.error || `Chart API returned HTTP ${response.status}.`)
+            if (!Array.isArray(data.items)) throw new Error('Chart API did not return area totals.')
+            summary = { at: Date.now(), rows: data.items }
+            layoutSummaryCache.set(layer, summary)
+          }
+          if (controller.signal.aborted) return
+          const classes = buildLayoutChartClasses(summary.rows, categoryProperty, JSON.parse(scopeKey))
+          const nextState = { key: requestKey, classes, categoryProperty, subclassProperty: '', error: '' }
+          chartCache.set(requestKey, { at: Date.now(), state: nextState })
+          setChartState(nextState)
+          return
+        }
         const schemaParams = new URLSearchParams({
           service: 'WFS',
           version: '1.1.0',
@@ -334,14 +362,14 @@ function LulcChart({
           classes: [],
           categoryProperty: '',
           subclassProperty: '',
-          error: error instanceof Error ? error.message : 'Unable to load LULC statistics.',
+          error: error.name === 'TimeoutError' ? 'Chart API took longer than 30 seconds. Check the backend and database query.' : error instanceof Error ? error.message : 'Unable to load LULC statistics.',
         })
       }
     }
 
     loadClasses()
     return () => controller.abort()
-  }, [categoryProperty, cqlFilter, layer, requestKey])
+  }, [categoryProperty, cqlFilter, layer, requestKey, scopeKey])
 
   const isCurrentData = chartState.key === requestKey
   const classes = isCurrentData ? chartState.classes : []

@@ -5,48 +5,20 @@ import Fill from 'ol/style/Fill.js'
 import Stroke from 'ol/style/Stroke.js'
 import Style from 'ol/style/Style.js'
 import VectorSource from 'ol/source/Vector.js'
-import { LAYOUT_FIELDS, findSchemeField, findSectorField } from '../config/layoutFields.js'
 import '../style/CadastralSearch.css'
 
-const geoserverWmsUrl =
-  import.meta.env.VITE_GEOSERVER_WMS_URL?.trim() || '/geoserver/wms'
-const geoserverWfsUrl = geoserverWmsUrl.replace(/\/wms(?=\?|$)/i, '/wfs')
+const apiBaseUrl = (import.meta.env.VITE_API_URL?.trim() || '/api').replace(/\/$/, '')
 
-function createSearchParams(layer, extra = {}) {
-  return new URLSearchParams({
-    service: 'WFS',
-    version: '1.1.0',
-    request: 'GetFeature',
-    typeName: layer,
-    outputFormat: 'application/json',
-    srsName: 'EPSG:4326',
-    ...extra,
-  })
-}
-
-async function fetchFeatures(params, signal) {
-  const response = await fetch(`${geoserverWfsUrl}?${params}`, { signal })
-  const text = await response.text()
-  if (!response.ok) {
-    throw new Error(`GeoServer returned HTTP ${response.status}.`)
+async function fetchLayout(path, parameters, signal) {
+  const response = await fetch(`${apiBaseUrl}/layout/${path}?${new URLSearchParams(parameters)}`, { signal })
+  let data
+  try {
+    data = await response.json()
+  } catch {
+    throw new Error('Backend returned an invalid layout response. Check that the API server is running.')
   }
-  if (!response.headers.get('content-type')?.includes('json')) {
-    const document = new DOMParser().parseFromString(text, 'text/xml')
-    const message = document
-      .querySelector('ServiceException, ExceptionText')
-      ?.textContent?.trim()
-    throw new Error(message || 'GeoServer returned an invalid layout response.')
-  }
-
-  const data = JSON.parse(text)
-  if (!Array.isArray(data.features)) {
-    throw new Error('GeoServer did not return layout features.')
-  }
-  return data.features
-}
-
-function quoteCqlValue(value) {
-  return value.replaceAll("'", "''")
+  if (!response.ok) throw new Error(data.error || `Backend returned HTTP ${response.status}.`)
+  return data
 }
 
 function LayoutSearch({ map, layer }) {
@@ -54,8 +26,6 @@ function LayoutSearch({ map, layer }) {
   const requestRef = useRef(null)
   const [schemes, setSchemes] = useState([])
   const [selectedScheme, setSelectedScheme] = useState('')
-  const [schemeProperty, setSchemeProperty] = useState('')
-  const [sectorProperty, setSectorProperty] = useState('')
   const [sectors, setSectors] = useState([])
   const [selectedSector, setSelectedSector] = useState('')
   const [plots, setPlots] = useState([])
@@ -64,7 +34,6 @@ function LayoutSearch({ map, layer }) {
 
   useEffect(() => {
     if (!map) return undefined
-
     const source = new VectorSource()
     const highlightLayer = new VectorLayer({
       source,
@@ -76,7 +45,6 @@ function LayoutSearch({ map, layer }) {
     highlightLayer.setZIndex(1600)
     map.addLayer(highlightLayer)
     highlightSourceRef.current = source
-
     return () => {
       requestRef.current?.abort()
       map.removeLayer(highlightLayer)
@@ -85,76 +53,20 @@ function LayoutSearch({ map, layer }) {
   }, [map])
 
   useEffect(() => {
+    requestRef.current?.abort()
     highlightSourceRef.current?.clear()
+  }, [layer, selectedScheme, selectedSector, selectedPlot])
+
+  useEffect(() => {
+    setSchemes([])
+    setSelectedScheme('')
+    setSectors([])
+    setSelectedSector('')
+    setPlots([])
+    setSelectedPlot('')
     if (!layer) return undefined
-
     const controller = new AbortController()
-    async function loadSchemes() {
-      try {
-        setStatus({ loading: true, error: '', message: '' })
-        const schemaParams = new URLSearchParams({
-          service: 'WFS',
-          version: '1.1.0',
-          request: 'DescribeFeatureType',
-          typeName: layer,
-        })
-        const schemaResponse = await fetch(`${geoserverWfsUrl}?${schemaParams}`, {
-          signal: controller.signal,
-        })
-        const schemaText = await schemaResponse.text()
-        if (!schemaResponse.ok) {
-          throw new Error(`GeoServer returned HTTP ${schemaResponse.status}.`)
-        }
-        const schemaDocument = new DOMParser().parseFromString(schemaText, 'text/xml')
-        const schemaError = schemaDocument.querySelector('parsererror, ServiceException')
-        if (schemaError) {
-          throw new Error(
-            schemaError.textContent?.trim() || 'GeoServer returned an invalid layout schema.',
-          )
-        }
-        const schemaProperties = Array.from(schemaDocument.getElementsByTagName('*'))
-          .filter((element) => element.localName === 'element')
-          .map((element) => element.getAttribute('name'))
-          .filter(Boolean)
-        const resolvedSectorProperty = findSectorField(schemaProperties)
-        if (!resolvedSectorProperty) {
-          throw new Error('The layout layer has no sector field in its published schema.')
-        }
-        const resolvedSchemeProperty = findSchemeField(schemaProperties)
-        if (!resolvedSchemeProperty) {
-          throw new Error('The layout layer has no scheme name field in its published schema.')
-        }
-        const params = createSearchParams(layer, {
-          propertyName: resolvedSchemeProperty,
-          maxFeatures: '100000',
-        })
-        const features = await fetchFeatures(params, controller.signal)
-        const schemeNames = [
-          ...new Set(
-            features
-              .map(({ properties }) => String(properties?.[resolvedSchemeProperty] ?? '').trim())
-              .filter(Boolean),
-          ),
-        ].sort((a, b) => a.localeCompare(b))
-        setSchemeProperty(resolvedSchemeProperty)
-        setSectorProperty(resolvedSectorProperty)
-        setSchemes(schemeNames)
-        setStatus({
-          loading: false,
-          error: schemeNames.length ? '' : 'No scheme names found in the layout layer.',
-          message: '',
-        })
-      } catch (error) {
-        if (controller.signal.aborted) return
-        setStatus({
-          loading: false,
-          error: error instanceof Error ? error.message : 'Unable to load scheme names.',
-          message: '',
-        })
-      }
-    }
-
-    loadSchemes()
+    loadOptions('schemes', {}, setSchemes, 'No schemes found.', controller)
     return () => controller.abort()
   }, [layer])
 
@@ -163,147 +75,67 @@ function LayoutSearch({ map, layer }) {
     setSelectedSector('')
     setPlots([])
     setSelectedPlot('')
-    highlightSourceRef.current?.clear()
-    if (!layer || !selectedScheme || !sectorProperty || !schemeProperty) return undefined
-
+    if (!layer || !selectedScheme) return undefined
     const controller = new AbortController()
-    async function loadSectors() {
-      try {
-        setStatus({ loading: true, error: '', message: '' })
-        const params = createSearchParams(layer, {
-          propertyName: sectorProperty,
-          CQL_FILTER: `${schemeProperty}='${quoteCqlValue(selectedScheme)}'`,
-          maxFeatures: '100000',
-        })
-        const features = await fetchFeatures(params, controller.signal)
-        const sectorNames = [
-          ...new Set(
-            features
-              .map(({ properties }) =>
-                String(properties?.[sectorProperty] ?? '').trim(),
-              )
-              .filter(Boolean),
-          ),
-        ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-        setSectors(sectorNames)
-        setStatus({
-          loading: false,
-          error: sectorNames.length ? '' : 'No sectors found for this scheme.',
-          message: '',
-        })
-      } catch (error) {
-        if (controller.signal.aborted) return
-        setStatus({
-          loading: false,
-          error: error instanceof Error ? error.message : 'Unable to load sectors.',
-          message: '',
-        })
-      }
-    }
-
-    loadSectors()
+    loadOptions('sectors', { scheme: selectedScheme }, setSectors, 'No sectors found for this scheme.', controller)
     return () => controller.abort()
-  }, [layer, schemeProperty, sectorProperty, selectedScheme])
+  }, [layer, selectedScheme])
 
   useEffect(() => {
     setPlots([])
     setSelectedPlot('')
-    highlightSourceRef.current?.clear()
-    if (!layer || !selectedScheme || !selectedSector || !sectorProperty || !schemeProperty) return undefined
-
+    if (!layer || !selectedScheme || !selectedSector) return undefined
     const controller = new AbortController()
-    async function loadPlots() {
-      try {
-        setStatus({ loading: true, error: '', message: '' })
-        const params = createSearchParams(layer, {
-          propertyName: LAYOUT_FIELDS.plotNumber,
-          CQL_FILTER:
-            `${schemeProperty}='${quoteCqlValue(selectedScheme)}' AND ` +
-            `${sectorProperty}='${quoteCqlValue(selectedSector)}'`,
-          maxFeatures: '100000',
-        })
-        const features = await fetchFeatures(params, controller.signal)
-        const plotNumbers = [
-          ...new Set(
-            features
-              .map(({ properties }) => String(properties?.[LAYOUT_FIELDS.plotNumber] ?? '').trim())
-              .filter(Boolean),
-          ),
-        ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
-        setPlots(plotNumbers)
-        setStatus({
-          loading: false,
-          error: plotNumbers.length ? '' : 'No plot numbers found for this sector.',
-          message: '',
-        })
-      } catch (error) {
-        if (controller.signal.aborted) return
-        setStatus({
-          loading: false,
-          error: error instanceof Error ? error.message : 'Unable to load plot numbers.',
-          message: '',
-        })
-      }
-    }
-
-    loadPlots()
+    loadOptions('plots', { scheme: selectedScheme, sector: selectedSector }, setPlots, 'No plots found for this sector.', controller)
     return () => controller.abort()
-  }, [layer, schemeProperty, sectorProperty, selectedScheme, selectedSector])
+  }, [layer, selectedScheme, selectedSector])
+
+  async function loadOptions(path, parameters, setItems, emptyMessage, controller) {
+    setStatus({ loading: true, error: '', message: '' })
+    try {
+      const data = await fetchLayout(path, parameters, controller.signal)
+      if (controller.signal.aborted) return
+      if (!Array.isArray(data.items)) throw new Error('Backend did not return layout options.')
+      setItems(data.items)
+      setStatus({ loading: false, error: data.items.length ? '' : emptyMessage, message: '' })
+    } catch (error) {
+      if (controller.signal.aborted) return
+      setStatus({ loading: false, error: error.message || 'Unable to load layout options.', message: '' })
+    }
+  }
 
   async function handleSearch(event) {
     event.preventDefault()
     if (!map || !layer || !selectedScheme || !selectedSector || !selectedPlot) return
-
     requestRef.current?.abort()
     const controller = new AbortController()
     requestRef.current = controller
     setStatus({ loading: true, error: '', message: '' })
-
     try {
-      const params = createSearchParams(layer, {
-        propertyName: `${schemeProperty},${sectorProperty},${LAYOUT_FIELDS.plotNumber},geom`,
-        CQL_FILTER:
-          `${schemeProperty}='${quoteCqlValue(selectedScheme)}' AND ` +
-          `${sectorProperty}='${quoteCqlValue(selectedSector)}' AND ` +
-          `${LAYOUT_FIELDS.plotNumber}='${quoteCqlValue(selectedPlot)}'`,
-        maxFeatures: '100',
-      })
-      const features = await fetchFeatures(params, controller.signal)
-      const projection = map.getView().getProjection()
-      const selectedFeatures = new GeoJSON().readFeatures(
-        { type: 'FeatureCollection', features },
-        { dataProjection: 'EPSG:4326', featureProjection: projection },
-      )
+      const data = await fetchLayout('search', {
+        scheme: selectedScheme, sector: selectedSector, plot: selectedPlot,
+      }, controller.signal)
       if (controller.signal.aborted) return
-
+      if (!Array.isArray(data.features)) throw new Error('Backend did not return layout features.')
+      const selectedFeatures = new GeoJSON().readFeatures(data, {
+        dataProjection: 'EPSG:4326',
+        featureProjection: map.getView().getProjection(),
+      }).filter((feature) => feature.getGeometry())
       const source = highlightSourceRef.current
       source?.clear()
       if (!selectedFeatures.length) {
-        setStatus({ loading: false, error: 'No matching layout plot was found.', message: '' })
+        setStatus({ loading: false, error: 'No matching layout plot with geometry was found.', message: '' })
         return
       }
-
       source?.addFeatures(selectedFeatures)
       const extent = source?.getExtent()
-      if (extent) {
-        map.getView().fit(extent, {
-          padding: [80, 80, 80, 80],
-          maxZoom: 19,
-          duration: 500,
-        })
+      if (extent && extent.every(Number.isFinite)) {
+        map.getView().fit(extent, { padding: [80, 80, 80, 80], maxZoom: 19, duration: 500 })
       }
-      setStatus({
-        loading: false,
-        error: '',
-        message: `Located plot ${selectedPlot} in sector ${selectedSector}.`,
-      })
+      setStatus({ loading: false, error: '', message: `Located plot ${selectedPlot} in sector ${selectedSector}.` })
     } catch (error) {
       if (controller.signal.aborted) return
-      setStatus({
-        loading: false,
-        error: error instanceof Error ? error.message : 'Unable to locate the selected plot.',
-        message: '',
-      })
+      setStatus({ loading: false, error: error.message || 'Unable to locate the selected plot.', message: '' })
     }
   }
 

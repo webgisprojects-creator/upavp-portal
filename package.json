@@ -12,6 +12,7 @@
   "scripts": {
     "dev:login": "npm run dev -w @upavp/login",
     "dev:dashboard": "npm run dev -w @upavp/dashboard",
+    "dev:server": "npm run dev -w @upavp/server",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm test --workspaces --if-present",
