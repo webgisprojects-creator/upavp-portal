@@ -47,7 +47,7 @@ Requirements: Node 22 (`nvm use` reads `.nvmrc`), Python 3.13 (only for the data
 
 ```bash
 npm install                     # one install for the whole repo (npm workspaces)
-npm run dev:dashboard           # http://localhost:5173/AwasVikas/   (map data comes from the shared GeoServer)
+npm run dev:dashboard           # http://localhost:5173/AwasVikas/   (map data comes from pre-production's GeoServer proxy, see CONTRIBUTING section 5)
 npm run dev:login               # http://localhost:5173/
 cp apps/login/.env.example apps/login/.env.local     # then edit: sign-in is disabled until VITE_DEMO_USERS is set
 ```

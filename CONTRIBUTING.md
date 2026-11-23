@@ -57,7 +57,17 @@ Be kind and specific; approve when it is good enough, not perfect.
 
 ## 5. Local setup
 
-See the README quick start. Useful extras:
+See the README quick start. What a developer needs to configure:
+
+| What | Local setting | Where it comes from |
+|---|---|---|
+| Dashboard map data (GeoServer) | **Nothing to configure.** `npm run dev:dashboard` proxies `/geoserver` to the pre-production portal (`http://27.100.38.131:8070`), whose nginx serves the **dedicated GeoServer** through a read-only proxy (WMS/WFS/OWS). Override with `VITE_DEV_GEOSERVER_TARGET` in `apps/dashboard/.env.local` (see `apps/dashboard/.env.example`). | Do **not** point it at the shared GeoServer `162.245.218.6`: it is busy with another portal and no longer receives our layers. |
+| `VITE_GEOSERVER_WMS_URL` | `/geoserver/wms` (the default; keep it) | `apps/dashboard/.env.example` |
+| Login sign-in | `VITE_DEMO_USERS` in `apps/login/.env.local` | Ask the project owner (it is also a CI secret). Never commit it. |
+| Database | **The dashboard does not talk to the database**, so day-to-day front-end work needs no DB settings. For pgAdmin / QGIS / `db/migrate.sh`: host `27.100.38.132`, database `upavp_geo`, port `5432`, role `upavp_geo_dev` (PgBouncer on `6432` has one alias per role - ask the project owner). | Password from the team password manager, never from the repo. Use `upavp_geo` as the pgAdmin maintenance database. |
+| Publishing layers / editing styles in GeoServer | Dedicated GeoServer only: `ssh -L 8081:127.0.0.1:8081 db-primary`, then http://localhost:8081/geoserver/web/ | Admin password: the GeoServer owner (root-only file on db-primary). Changes on the shared GeoServer no longer reach the portal. |
+
+Useful extras:
 
 ```bash
 npm run test --workspace @upavp/dashboard -- --watch     # tests re-run as you type
