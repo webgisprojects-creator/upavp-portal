@@ -26,6 +26,23 @@ main  ●────●────────●─────────�
 * One pull request = one purpose. Keep them reviewable (aim for under ~400 changed lines).
 * A hot-fix follows the same path (branch -> PR -> merge); it is just reviewed first.
 
+### Never start from an old copy (read this if you are new to git)
+
+Code that is sent around as a zip is a **snapshot**: it does not follow the repository. If you edit a snapshot and send it back,
+the work is based on old code and has to be merged by hand (this already happened once: the dashboard zip of November 2026 was based on
+the 29 October code, so it still had old layer names and lacked later fixes).
+
+Do this **every time before you start working**:
+
+```bash
+git switch main          # go to the main branch
+git pull                 # download everything new from GitHub
+git switch -c feature/short-description    # your own branch, started from the newest code
+```
+
+Then work, `git add` + `git commit`, `git push`, and open a pull request. If you are unsure, run `git status` and `git log --oneline -5`
+and ask before changing anything. Never send the project as a zip; push your branch instead (it keeps your name on your work).
+
 ## 2. Commit messages (Conventional Commits)
 
 `type(scope): what changed` - present tense, under ~72 characters.

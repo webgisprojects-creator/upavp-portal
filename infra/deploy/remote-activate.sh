@@ -44,6 +44,11 @@ flock -n 9 || { echo "ERROR: another deployment is running (lock held)"; exit 2;
 PREV="$(readlink -f "$BASE/current" 2>/dev/null || true)"
 echo "PREVIOUS=$(basename "${PREV:-none}")"
 
+# The API (apps/server) runs as the systemd service "upavp-api" (installed once by infra/server/setup-api.sh).
+# Until that service exists the deployment behaves exactly as before (static site only).
+api_installed() { systemctl cat upavp-api >/dev/null 2>&1; }
+restart_api() { if api_installed; then $SUDO systemctl restart upavp-api || true; fi; }
+
 switch_to() {   # $1 = release directory; rename() is atomic, unlike remove-then-create
   ln -sfn "$1" "$BASE/current.new"
   mv -T "$BASE/current.new" "$BASE/current"
@@ -71,18 +76,27 @@ restore_conf() { if [ "$CONF_STATE" = updated ]; then $SUDO "$HELPER" restore ||
 # ---- 3. atomic switch + graceful reload
 switch_to "$RELDIR"
 $SUDO systemctl reload nginx
+restart_api
 
 # ---- 4. check it from the server itself; undo on failure
 sleep 1
 OK=1
 curl -fsS --max-time 10 "http://127.0.0.1:$PORT/" | grep -q 'id="root"' || OK=0
 curl -fsS --max-time 10 "http://127.0.0.1:$PORT/AwasVikas/" | grep -q 'id="root"' || OK=0
+if api_installed; then
+  for _ in 1 2 3 4 5 6 7 8; do
+    curl -fsS --max-time 10 "http://127.0.0.1:$PORT/api/health" | grep -q '"status":"ok"' && break
+    sleep 2
+  done
+  curl -fsS --max-time 10 "http://127.0.0.1:$PORT/api/health" | grep -q '"status":"ok"' || { echo "API health check failed"; OK=0; }
+fi
 if [ -n "$EXPECT" ]; then
   curl -fsS --max-time 10 "http://127.0.0.1:$PORT/revision.json" | grep -q "\"shortCommit\":\"$EXPECT\"" || OK=0
 fi
 if [ "$OK" != 1 ]; then
   echo "ERROR: new release failed the on-server check - rolling back"
   if [ -n "$PREV" ] && [ -d "$PREV" ]; then switch_to "$PREV"; fi
+  restart_api
   restore_conf
   if $SUDO nginx -t >/dev/null 2>&1; then $SUDO systemctl reload nginx; fi
   exit 1

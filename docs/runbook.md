@@ -64,6 +64,24 @@ After the PR is merged and CD has deployed it:
 
 Before the cut-over, `infra/geoserver-local/sync-config.sh` copies the UPAVP workspaces from the shared to the dedicated server (it refuses to run once the marker exists).
 
+## Search / chart API (`apps/server`)
+
+The dashboard's scheme/sector/plot search, cadastral search and layout chart call `/api/...`. nginx forwards `/api/` to a small Node
+service on `127.0.0.1:3001` (systemd unit `upavp-api`). It reads the database with a **read-only** login (`upavp_geo_api`: SELECT on
+`lucknow.vrindavan_layout` only) and GeoServer's WFS (the dedicated one).
+
+| What | Where |
+|---|---|
+| Code | `apps/server` - shipped inside every release as `api/` (with production dependencies); the deploy restarts the service |
+| Settings + DB password | `/etc/upavp/api.env` on pre-production (root-only, never in git) |
+| Logs | `journalctl -u upavp-api -n 100` |
+| Health | `curl http://127.0.0.1:8070/api/health` -> `{"status":"ok","database":"connected"}` |
+| Restart | `sudo systemctl restart upavp-api` |
+| One-time setup | `infra/server/setup-api.sh install` (root) + `infra/server/db-api-role.sql` (postgres) |
+
+If search or the chart shows an error: check health first. `database` errors -> password/role in `api.env`; 502 from nginx -> the service is
+not running (`systemctl status upavp-api`). The chart answer is cached for 60 s, and every query is cancelled after 10 s.
+
 ## Contacts and access
 
 Keep this table filled in (do **not** put passwords here):

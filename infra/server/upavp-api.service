@@ -1,0 +1,24 @@
+# systemd unit for the search/chart API (apps/server). Installed by infra/server/setup-api.sh.
+# Always runs the code of the LIVE release ("current" is switched atomically by the deploy; the deploy restarts this service).
+[Unit]
+Description=UPAVP search/chart API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=upavp-api
+Group=upavp-api
+WorkingDirectory=/var/www/upavp-portal/current/api
+EnvironmentFile=/etc/upavp/api.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=3
+# read-only database login, listens on 127.0.0.1 only; the service cannot write anywhere or gain privileges
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/var/www/upavp-portal
+
+[Install]
+WantedBy=multi-user.target

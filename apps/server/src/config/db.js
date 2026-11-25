@@ -11,6 +11,7 @@ const config = {
   connectionTimeoutMillis: 10000,
   max: 10,
   idleTimeoutMillis: 30000,
+  statement_timeout: 10000, // a slow or runaway query is cancelled after 10 s instead of piling up
 }
 
 for (const key of ['host', 'database', 'user', 'password']) {

@@ -34,10 +34,16 @@ cp -r apps/login/dist/. "$OUT/site/"
 cp -r apps/dashboard/dist/. "$OUT/site/AwasVikas/"
 test -f "$OUT/site/index.html" && test -f "$OUT/site/AwasVikas/index.html"
 
+# --- the search/chart API (apps/server): code + production dependencies only, installed from its own lockfile
+mkdir -p "$OUT/api"
+cp -r apps/server/server.js apps/server/package.json apps/server/package-lock.json apps/server/src "$OUT/api/"
+(cd "$OUT/api" && npm ci --omit=dev --no-audit --no-fund --silent)
+test -f "$OUT/api/node_modules/express/package.json" && test -f "$OUT/api/server.js"
+
 printf '{"commit":"%s","shortCommit":"%s","branch":"%s","dirty":%s,"builtAt":"%s","builtBy":"%s"}\n' \
   "$COMMIT" "$SHORT" "$BRANCH" "$DIRTY" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BUILT_BY" > "$OUT/site/revision.json"
 
 ARTIFACT="$OUT/portal-${SHORT}.tar.gz"
-tar -C "$OUT" -czf "$ARTIFACT" site
+tar -C "$OUT" -czf "$ARTIFACT" site api
 echo "artifact: $ARTIFACT ($(du -h "$ARTIFACT" | cut -f1))"
 echo "$ARTIFACT" > "$OUT/ARTIFACT_PATH"

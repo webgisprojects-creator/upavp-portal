@@ -65,7 +65,12 @@ export const layoutColumns = {
 }
 
 // Return totals only; plot geometry stays inside PostgreSQL.
+// The totals only change when data is loaded, but computing them scans the whole table: keep the answer for 60 s.
+const CHART_CACHE_MS = 60_000
+let chartCache = { at: 0, rows: null }
+
 export async function getLayoutChartData() {
+  if (chartCache.rows && Date.now() - chartCache.at < CHART_CACHE_MS) return chartCache.rows
   const typeColumn = quoteIdentifier(process.env.LAYOUT_PROPERTY_TYPE_FIELD || 'property_t')
   const statusColumn = quoteIdentifier(process.env.LAYOUT_STATUS_FIELD || 'status')
   const result = await pool.query(
@@ -79,5 +84,7 @@ export async function getLayoutChartData() {
      FROM ${layoutTable}
      GROUP BY 1, 2, 3, 4`,
   )
-  return result.rows.map((row) => ({ ...row, area_ha: Number(row.area_ha) }))
+  const rows = result.rows.map((row) => ({ ...row, area_ha: Number(row.area_ha) }))
+  chartCache = { at: Date.now(), rows }
+  return rows
 }
