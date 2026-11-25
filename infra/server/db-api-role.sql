@@ -6,3 +6,4 @@ ALTER ROLE upavp_geo_api SET statement_timeout = '10s';
 GRANT CONNECT ON DATABASE upavp_geo TO upavp_geo_api;
 GRANT USAGE ON SCHEMA lucknow TO upavp_geo_api;
 GRANT SELECT ON lucknow.vrindavan_layout TO upavp_geo_api;
+GRANT USAGE ON SCHEMA public TO upavp_geo_api;   -- PostGIS types/functions live in public (no table rights given)

@@ -50,6 +50,8 @@ apicode="$(curl -s -o /tmp/.upavp_api_health -w '%{http_code}' --max-time 15 "$B
 if [ "$apicode" = 200 ] && grep -q '"status":"ok"' /tmp/.upavp_api_health; then
   pass "API health (database connected)"
   curl -fsS --max-time 20 "$BASE/api/layout/schemes" | grep -q '"items":\[' && pass "API /layout/schemes returns data" || fail "API /layout/schemes"
+  # the chart query also needs PostGIS (schema public) - a database role without it passes the checks above but breaks the chart
+  curl -fsS --max-time 30 "$BASE/api/layout/chart-data" | grep -q '"plot_count"' && pass "API /layout/chart-data returns data" || fail "API /layout/chart-data (database role missing PostGIS access?)"
 elif [ "$apicode" = 404 ]; then warn "API not installed on this server yet (/api/health 404) - search and chart need it"
 else fail "API /api/health returned $apicode"; fi
 rm -f /tmp/.upavp_api_health
