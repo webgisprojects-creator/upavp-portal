@@ -16,7 +16,10 @@ const geoserverWmsUrl =
   import.meta.env.VITE_GEOSERVER_WMS_URL?.trim() || '/geoserver/wms'
 const geoserverWfsUrl = geoserverWmsUrl.replace(/\/wms(?=\?|$)/i, '/wfs')
 
+const apiBaseUrl = (import.meta.env.VITE_API_URL?.trim() || '/api').replace(/\/$/, '')
+
 const cityNames = {
+  lucknow: 'Vrindavan Yojana, Lucknow',
   katra: 'Katra, Pratapgarh',
   majhola: 'Majhola, Moradabad',
   hardoi: 'Hardoi',
@@ -77,6 +80,34 @@ async function fetchLulcFeatures(layer, signal) {
   }))
 }
 
+async function fetchLayoutSchemeAreas() {
+  const response = await fetch(`${apiBaseUrl}/layout/chart-data`, {
+    signal: AbortSignal.timeout(30000),
+  })
+  if (!response.ok) {
+    throw new Error(`Layout summary API returned HTTP ${response.status}.`)
+  }
+
+  const data = await response.json()
+  if (!Array.isArray(data.items)) {
+    throw new Error('Layout summary API did not return area totals.')
+  }
+
+  const areasByScheme = new Map()
+  for (const { scheme, area_ha } of data.items) {
+    const name = String(scheme ?? '').trim() || 'Unspecified'
+    const key = name.toLowerCase()
+    const existing = areasByScheme.get(key)
+    const area = (existing?.area ?? 0) + Number(area_ha)
+    if (!Number.isFinite(area)) {
+      throw new Error('Layout summary API returned an invalid area.')
+    }
+    areasByScheme.set(key, { category: existing?.category ?? name, area })
+  }
+
+  return [...areasByScheme.values()].sort((a, b) => b.area - a.area)
+}
+
 async function createMapImage(map) {
   await new Promise((resolve, reject) => {
     let renderKey
@@ -110,7 +141,8 @@ async function createMapImage(map) {
   if (!context) throw new Error('Unable to create a map image.')
   context.scale(pixelRatio, pixelRatio)
 
-  const canvases = map.getViewport().querySelectorAll('.ol-layer canvas')
+  // The viewport's layer container includes layers with custom classes, such as Plot Layout.
+  const canvases = map.getViewport().querySelectorAll('.ol-layers canvas')
   canvases.forEach((canvas) => {
     if (!canvas.width || !canvas.height) return
     const opacity = canvas.parentNode?.style.opacity
@@ -251,20 +283,33 @@ function MapActionsToolbar({ map, city, lulcLayer, cadastralLayer, layoutLayer }
     setMeasurementMode(null)
   }
 
+  const exportsLayout = layoutLayer === 'Planning:vrindavan_layout'
+  const canExportData = exportsLayout || Boolean(lulcLayer)
+
   async function handleExport(format) {
-    if (!map || !lulcLayer) return
+    if (!map || exporting || (format !== 'image' && !canExportData)) return
     setExportError('')
     setExporting(true)
-    const controller = new AbortController()
-
     try {
-      const features = await fetchLulcFeatures(lulcLayer, controller.signal)
-      const cityName = cityNames[city]
-      const filename = `land-use-${city}-${new Date().toISOString().slice(0, 10)}`
+      const cityName = cityNames[city] ?? city
+      const fileType = exportsLayout ? 'plot-layout' : lulcLayer ? 'land-use' : 'map'
+      const filename = `${fileType}-${city}-${new Date().toISOString().slice(0, 10)}`
+
+      if (format === 'image') {
+        const mapImage = await createMapImage(map)
+        const imageResponse = await fetch(mapImage)
+        downloadFile(await imageResponse.blob(), `${filename}.png`)
+        return
+      }
+
+      const features = exportsLayout
+        ? await fetchLayoutSchemeAreas()
+        : await fetchLulcFeatures(lulcLayer, AbortSignal.timeout(30000))
+      const categoryLabel = exportsLayout ? 'Scheme Name' : 'Category'
 
       if (format === 'csv') {
         const rows = [
-          ['City', 'Category', 'Area (ha)'],
+          ['City', categoryLabel, 'Area (ha)'],
           ...features.map(({ category, area }) => [cityName, category, area]),
         ]
         const csv = `\uFEFF${rows.map((row) => row.map(escapeCsv).join(',')).join('\r\n')}`
@@ -273,11 +318,6 @@ function MapActionsToolbar({ map, city, lulcLayer, cadastralLayer, layoutLayer }
       }
 
       const mapImage = await createMapImage(map)
-      if (format === 'image') {
-        const imageResponse = await fetch(mapImage)
-        downloadFile(await imageResponse.blob(), `${filename}.png`)
-        return
-      }
 
       const categoryTotals = new Map()
       features.forEach(({ category, area }) => {
@@ -308,9 +348,10 @@ function MapActionsToolbar({ map, city, lulcLayer, cadastralLayer, layoutLayer }
 
       pdf.addPage()
       pdf.setFontSize(16)
-      pdf.text(`${cityName} - LULC summary`, 14, 18)
+      const summaryTitle = exportsLayout ? 'Area by Scheme Name (Full Layout)' : 'LULC summary'
+      pdf.text(`${cityName} - ${summaryTitle}`, 14, 18)
       pdf.setFontSize(10)
-      pdf.text('Category', 14, 28)
+      pdf.text(categoryLabel, 14, 28)
       pdf.text('Area (ha)', 190, 28)
       let y = 36
       for (const [category, area] of [...categoryTotals.entries()].sort((a, b) => b[1] - a[1])) {
@@ -370,7 +411,7 @@ function MapActionsToolbar({ map, city, lulcLayer, cadastralLayer, layoutLayer }
         <button
           className="map-actions__button"
           type="button"
-          disabled={!map || !lulcLayer || exporting}
+          disabled={!map || !canExportData || exporting}
           onClick={() => handleExport('pdf')}
         >
           PDF
@@ -378,7 +419,7 @@ function MapActionsToolbar({ map, city, lulcLayer, cadastralLayer, layoutLayer }
         <button
           className="map-actions__button"
           type="button"
-          disabled={!map || !lulcLayer || exporting}
+          disabled={!map || !canExportData || exporting}
           onClick={() => handleExport('csv')}
         >
           CSV
@@ -386,7 +427,7 @@ function MapActionsToolbar({ map, city, lulcLayer, cadastralLayer, layoutLayer }
         <button
           className="map-actions__button"
           type="button"
-          disabled={!map || !lulcLayer || exporting}
+          disabled={!map || exporting}
           onClick={() => handleExport('image')}
         >
           Map image
