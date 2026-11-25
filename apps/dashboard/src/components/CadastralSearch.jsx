@@ -7,53 +7,31 @@ import Style from 'ol/style/Style.js'
 import VectorSource from 'ol/source/Vector.js'
 import '../style/CadastralSearch.css'
 
-const geoserverWmsUrl =
-  import.meta.env.VITE_GEOSERVER_WMS_URL?.trim() || '/geoserver/wms'
-const geoserverWfsUrl = geoserverWmsUrl.replace(/\/wms(?=\?|$)/i, '/wfs')
+const apiBaseUrl = import.meta.env.VITE_API_URL?.trim() || '/api'
 
-function quoteCqlValue(value) {
-  return value.replaceAll("'", "''")
-}
-
-async function fetchFeatures(params, signal) {
-  const response = await fetch(`${geoserverWfsUrl}?${params}`, { signal })
+async function fetchApi(path, parameters, signal) {
+  const params = new URLSearchParams(parameters)
+  const response = await fetch(`${apiBaseUrl}${path}?${params}`, { signal })
   const text = await response.text()
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    throw new Error('Backend returned an invalid cadastral response.')
+  }
+
   if (!response.ok) {
-    throw new Error(`GeoServer returned HTTP ${response.status}.`)
+    throw new Error(data.error || `Backend returned HTTP ${response.status}.`)
   }
-  if (!response.headers.get('content-type')?.includes('json')) {
-    const document = new DOMParser().parseFromString(text, 'text/xml')
-    const message =
-      document.querySelector('ServiceException, ExceptionText')?.textContent?.trim()
-    throw new Error(message || 'GeoServer returned an invalid cadastral response.')
-  }
-
-  const data = JSON.parse(text)
-  if (!Array.isArray(data.features)) {
-    throw new Error('GeoServer did not return cadastral features.')
-  }
-  return data.features
-}
-
-function createSearchParams(layer, extra = {}) {
-  return new URLSearchParams({
-    service: 'WFS',
-    version: '1.1.0',
-    request: 'GetFeature',
-    typeName: layer,
-    outputFormat: 'application/json',
-    srsName: 'EPSG:4326',
-    ...extra,
-  })
+  return data
 }
 
 function CadastralSearch({ map, city, layer }) {
   const highlightSourceRef = useRef(null)
   const requestRef = useRef(null)
-  const [villageInput, setVillageInput] = useState('')
   const [selectedVillage, setSelectedVillage] = useState('')
-  const [suggestions, setSuggestions] = useState([])
-  const [villageListOpen, setVillageListOpen] = useState(false)
+  const [villages, setVillages] = useState([])
+  const [villagesLoading, setVillagesLoading] = useState(false)
   const [gataNumbers, setGataNumbers] = useState([])
   const [selectedGata, setSelectedGata] = useState('')
   const [status, setStatus] = useState({ loading: false, error: '' })
@@ -81,44 +59,35 @@ function CadastralSearch({ map, city, layer }) {
   }, [map])
 
   useEffect(() => {
-    const query = villageInput.trim()
-    if (!layer || query.length < 2 || query === selectedVillage) {
-      return undefined
-    }
-
+    if (!layer) return undefined
     const controller = new AbortController()
-    const timeout = window.setTimeout(async () => {
+    async function loadVillages() {
+      setVillagesLoading(true)
       try {
-        const params = createSearchParams(layer, {
-          propertyName: 'vill_name',
-          CQL_FILTER: `vill_name ILIKE '${quoteCqlValue(query)}%'`,
-          maxFeatures: '10000',
-        })
-        const features = await fetchFeatures(params, controller.signal)
-        const villages = [
-          ...new Set(
-            features
-              .map(({ properties }) => String(properties?.vill_name ?? '').trim())
-              .filter(Boolean),
-          ),
-        ].sort((a, b) => a.localeCompare(b))
-        setSuggestions(villages)
-        setVillageListOpen(true)
+        const data = await fetchApi(
+          '/cadastral/villages',
+          { layer },
+          controller.signal,
+        )
+        if (!Array.isArray(data.items)) {
+          throw new Error('Backend did not return village names.')
+        }
+        const names = [...new Set(data.items.map((village) => String(village).trim()).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b))
+        setVillages(names)
       } catch (error) {
         if (controller.signal.aborted) return
-        setSuggestions([])
         setStatus({
           loading: false,
-          error: error instanceof Error ? error.message : 'Unable to search village names.',
+          error: error instanceof Error ? error.message : 'Unable to load village names.',
         })
+      } finally {
+        if (!controller.signal.aborted) setVillagesLoading(false)
       }
-    }, 250)
-
-    return () => {
-      window.clearTimeout(timeout)
-      controller.abort()
     }
-  }, [city, layer, selectedVillage, villageInput])
+    loadVillages()
+    return () => controller.abort()
+  }, [layer])
 
   useEffect(() => {
     if (!layer || !selectedVillage) return undefined
@@ -126,19 +95,16 @@ function CadastralSearch({ map, city, layer }) {
     const controller = new AbortController()
     async function loadGataNumbers() {
       try {
-        const params = createSearchParams(layer, {
-          propertyName: 'gata_no',
-          CQL_FILTER: `vill_name='${quoteCqlValue(selectedVillage)}'`,
-          maxFeatures: '100000',
-        })
-        const features = await fetchFeatures(params, controller.signal)
-        const numbers = [
-          ...new Set(
-            features
-              .map(({ properties }) => String(properties?.gata_no ?? '').trim())
-              .filter(Boolean),
-          ),
-        ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        const data = await fetchApi(
+          '/cadastral/gata-numbers',
+          { layer, village: selectedVillage },
+          controller.signal,
+        )
+        if (!Array.isArray(data.items)) {
+          throw new Error('Backend did not return plot numbers.')
+        }
+        const numbers = [...new Set(data.items.map((gata) => String(gata).trim()).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
         setGataNumbers(numbers)
         setSelectedGata('')
         setStatus({
@@ -159,24 +125,6 @@ function CadastralSearch({ map, city, layer }) {
     return () => controller.abort()
   }, [layer, selectedVillage])
 
-  function handleVillageInput(value) {
-    setVillageInput(value)
-    setSelectedVillage('')
-    setSuggestions([])
-    setGataNumbers([])
-    setSelectedGata('')
-    setStatus({ loading: false, error: '' })
-    setVillageListOpen(true)
-  }
-
-  function selectVillage(village) {
-    setVillageInput(village)
-    setSelectedVillage(village)
-    setSuggestions([])
-    setVillageListOpen(false)
-    setStatus({ loading: true, error: '' })
-  }
-
   async function handleSearch(event) {
     event.preventDefault()
     if (!map || !layer || !selectedVillage || !selectedGata) return
@@ -187,17 +135,17 @@ function CadastralSearch({ map, city, layer }) {
     setStatus({ loading: true, error: '' })
 
     try {
-      const params = createSearchParams(layer, {
-        propertyName: 'vill_name,gata_no,geom',
-        CQL_FILTER:
-          `vill_name='${quoteCqlValue(selectedVillage)}' AND ` +
-          `gata_no='${quoteCqlValue(selectedGata)}'`,
-        maxFeatures: '100',
-      })
-      const features = await fetchFeatures(params, controller.signal)
+      const data = await fetchApi(
+        '/cadastral/search',
+        { layer, village: selectedVillage, gata: selectedGata },
+        controller.signal,
+      )
+      if (!Array.isArray(data.features)) {
+        throw new Error('Backend did not return matching cadastral features.')
+      }
       const projection = map.getView().getProjection()
       const parcels = new GeoJSON().readFeatures(
-        { type: 'FeatureCollection', features },
+        data,
         { dataProjection: 'EPSG:4326', featureProjection: projection },
       )
       if (controller.signal.aborted) return
@@ -235,32 +183,25 @@ function CadastralSearch({ map, city, layer }) {
   return (
     <form className="cadastral-search" onSubmit={handleSearch}>
       <div className="cadastral-search__field cadastral-search__village">
-        <label htmlFor={`village-search-${city}`}>Village</label>
-        <input
-          id={`village-search-${city}`}
-          type="text"
-          value={villageInput}
-          autoComplete="off"
-          placeholder="Type village name"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={villageListOpen && suggestions.length > 0}
-          aria-controls={`village-options-${city}`}
-          onFocus={() => setVillageListOpen(true)}
-          onBlur={() => window.setTimeout(() => setVillageListOpen(false), 120)}
-          onChange={(event) => handleVillageInput(event.target.value)}
-        />
-        {villageListOpen && suggestions.length > 0 && (
-          <ul className="cadastral-search__suggestions" id={`village-options-${city}`} role="listbox">
-            {suggestions.map((village) => (
-              <li key={village} role="option" aria-selected={village === selectedVillage}>
-                <button type="button" onClick={() => selectVillage(village)}>
-                  {village}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <label htmlFor={`village-select-${city}`}>Village</label>
+        <select
+          id={`village-select-${city}`}
+          value={selectedVillage}
+          disabled={!layer || villagesLoading || villages.length === 0}
+          onChange={(event) => {
+            setSelectedVillage(event.target.value)
+            setGataNumbers([])
+            setSelectedGata('')
+            setStatus({ loading: Boolean(event.target.value), error: '' })
+          }}
+        >
+          <option value="">
+            {villagesLoading ? 'Loading villages…' : 'Select village'}
+          </option>
+          {villages.map((village) => (
+            <option key={village} value={village}>{village}</option>
+          ))}
+        </select>
       </div>
       <div className="cadastral-search__field cadastral-search__gata">
         <label htmlFor={`gata-select-${city}`}>Gata No.</label>

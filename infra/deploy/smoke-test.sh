@@ -45,6 +45,15 @@ for path in /geoserver/web/ /geoserver/rest/workspaces; do
   [ "$code" = 404 ] && pass "$path blocked ($code)" || fail "$path returned $code (expected 404)"
 done
 
+# the search/chart API: a hard check once the service exists on the server (404 = "API not installed yet")
+apicode="$(curl -s -o /tmp/.upavp_api_health -w '%{http_code}' --max-time 15 "$BASE/api/health")"
+if [ "$apicode" = 200 ] && grep -q '"status":"ok"' /tmp/.upavp_api_health; then
+  pass "API health (database connected)"
+  curl -fsS --max-time 20 "$BASE/api/layout/schemes" | grep -q '"items":\[' && pass "API /layout/schemes returns data" || fail "API /layout/schemes"
+elif [ "$apicode" = 404 ]; then warn "API not installed on this server yet (/api/health 404) - search and chart need it"
+else fail "API /api/health returned $apicode"; fi
+rm -f /tmp/.upavp_api_health
+
 # soft: a real tile through the proxy
 tile="$BASE/geoserver/wms?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap&FORMAT=image/png&TRANSPARENT=true&LAYERS=Landuse_LULC:scheme_boundary_hardoi&STYLES=&WIDTH=128&HEIGHT=128&SRS=EPSG:3857&BBOX=8920467,3170678,8922867,3173078"
 ctype="$(curl -s -o /dev/null -w '%{content_type}' --max-time 45 "$tile")"

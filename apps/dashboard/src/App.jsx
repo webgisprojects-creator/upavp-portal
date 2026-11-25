@@ -354,6 +354,13 @@ function App() {
             onCategorySelect={handleCategorySelect}
             highlightLoading={selectionLoading}
             cqlFilter={isLayoutChart ? layerFilters['vrindavan-layout'] ?? '' : ''}
+            layoutChartScope={isLayoutChart && catalog ? {
+              schemeValues: selectedSchemes === null ? null : catalog.schemes
+                .filter(({ key }) => activeSchemeKeys.includes(key)).flatMap(({ rawValues }) => rawValues),
+              includeUnspecified: activeSchemeKeys.includes('unspecified'),
+              sectorValues: selectedSector === null ? null :
+                catalog.sectors.find(({ number }) => number === selectedSector)?.rawValues ?? [],
+            } : null}
           />
         </div>
       </main>

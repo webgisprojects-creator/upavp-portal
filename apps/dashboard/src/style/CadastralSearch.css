@@ -45,43 +45,6 @@
   outline: 2px solid rgb(30 99 152 / 15%);
 }
 
-.cadastral-search__suggestions {
-  position: absolute;
-  z-index: 20;
-  top: calc(100% + 2px);
-  right: 0;
-  left: 0;
-  max-height: 220px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 4px;
-  border: 1px solid #dbe3eb;
-  border-radius: 6px;
-  background: #fff;
-  box-shadow: 0 6px 18px rgb(25 48 75 / 16%);
-  list-style: none;
-}
-
-.cadastral-search__suggestions button {
-  width: 100%;
-  padding: 7px 8px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: #34495e;
-  cursor: pointer;
-  font: inherit;
-  font-size: 11px;
-  text-align: left;
-}
-
-.cadastral-search__suggestions button:hover,
-.cadastral-search__suggestions button:focus-visible {
-  outline: none;
-  background: #eaf2f8;
-  color: #1e6398;
-}
-
 .cadastral-search__submit {
   min-height: 30px;
   padding: 6px 10px;
@@ -115,6 +78,8 @@
   color: #a3332a;
 }
 
+
+
 @media (max-width: 760px) {
   .cadastral-search {
     width: 100%;
@@ -124,7 +89,7 @@
     flex: 1 1 150px;
   }
 
-  .cadastral-search__village input {
+  .cadastral-search__village select {
     width: 100%;
   }
 

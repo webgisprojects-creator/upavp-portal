@@ -49,6 +49,7 @@ fi
 
 ln -sfn "$BASE/releases/$REL" "$BASE/current.new"
 mv -T "$BASE/current.new" "$BASE/current"
+if systemctl cat upavp-api >/dev/null 2>&1; then if [ "$(id -u)" = 0 ]; then systemctl restart upavp-api; else sudo -n systemctl restart upavp-api; fi; fi
 
 sleep 1
 curl -fsS --max-time 10 http://127.0.0.1:8070/ | grep -q 'id="root"' || { echo "ERROR: site does not answer after rollback"; exit 1; }

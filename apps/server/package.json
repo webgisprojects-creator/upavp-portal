@@ -1,0 +1,19 @@
+{
+  "name": "@upavp/server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env server.js",
+    "start": "node --env-file-if-exists=.env server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "pg": "^8.16.3"
+  }
+}
